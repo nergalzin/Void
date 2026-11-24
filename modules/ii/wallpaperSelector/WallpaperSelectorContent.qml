@@ -74,7 +74,12 @@ MouseArea {
 
     function selectWallpaperPath(filePath) {
         if (filePath && filePath.length > 0) {
-            if (GlobalStates.wallpaperSelectorTarget === "lockWall") {
+            if (GlobalStates.wallpaperSelectorTarget === "sddmWall") {
+                Config.options.sddm.customImage = filePath;
+                Config.options.sddm.useShellWallpaper = false;
+                GlobalStates.wallpaperSelectorTarget = "wallpaper";
+                GlobalStates.wallpaperSelectorOpen = false;
+            } else if (GlobalStates.wallpaperSelectorTarget === "lockWall") {
                 Wallpapers.select(filePath, root.useDarkMode, finalPath => {
                     Config.options.background.lockWall = finalPath;
                     GlobalStates.wallpaperSelectorTarget = "wallpaper";
@@ -167,12 +172,6 @@ MouseArea {
 
     Rectangle {
         id: wallpaperGridBackground
-        WindowGlass {
-            anchors.fill: parent
-            glassEnabled: (parent?.color.a ?? 0) > 0
-            cardRadius: parent?.radius ?? 0
-            tint: parent?.color ?? 'transparent'
-        }
         anchors {
             fill: parent
             margins: Appearance.sizes.elevationMargin
@@ -194,7 +193,7 @@ MouseArea {
                 anchors.fill: parent
                 radius: wallpaperGridBackground.radius - 4
                 color: ColorSchemes.current !== "" ? wallpaperGridBackground.color : Appearance.colors.colLayer2
-                visible: !Config.options.wallpaperSelector.showBlurBackground && !Config.options.background.widgets.glass.enable
+                visible: !Config.options.wallpaperSelector.showBlurBackground
             }
 
             StyledImage {
@@ -276,10 +275,9 @@ MouseArea {
 
                     Toolbar {
                         anchors.centerIn: parent
-                        visible: root.source !== "blapples" && root.source !== "naive" && root.source !== "wallhaven"
+                        visible: root.source !== "blapples" && root.source !== "naive" && root.source !== "wallhaven" && root.source !== "workshop"
                         colBackground: Appearance.colors.colLayer1
                         outerShadow: true
-                        glass: true
 
                         Loader {
                             active: root.source === "local"
@@ -321,7 +319,7 @@ MouseArea {
                         }
 
                         Loader {
-                            active: root.source !== "local" && root.source !== "blapples" && root.source !== "naive" && root.source !== "wallhaven"
+                            active: root.source !== "local" && root.source !== "blapples" && root.source !== "naive" && root.source !== "wallhaven" && root.source !== "workshop"
                             visible: active
                             sourceComponent: RowLayout {
                                 spacing: 4
@@ -390,11 +388,11 @@ MouseArea {
 
                         StyledComboBox {
                             id: sourceCombo
-                            glass: true
                             implicitWidth: 120
                             model: [
                                 { value: "local",     displayName: Translation.tr("Local") },
                                 { value: "wallhaven", displayName: Translation.tr("Wallhaven") },
+                                { value: "workshop",  displayName: Translation.tr("Steam Workshop") },
                                 { value: "blapples",  displayName: Translation.tr("Blapples") },
                                 { value: "naive",     displayName: Translation.tr("NA-ive") },
                                 { value: "unsplash",  displayName: Translation.tr("Unsplash") },
@@ -412,7 +410,6 @@ MouseArea {
                             implicitHeight: 36
                             buttonRadius: height / 2
                             toggled: root.toolbarVisible
-                            glass: true
                             colBackground: Appearance.colors.colSecondaryContainer
                             onClicked: {
                                 if (Config.options.wallpaperSelector.showSearchbar) {
@@ -447,6 +444,7 @@ MouseArea {
                         anchors.fill: parent
                         sourceComponent: root.source === "local" ? localGridComponent
                             : root.source === "wallhaven" ? wallhavenGridComponent
+                            : root.source === "workshop" ? workshopGridComponent
                             : onlineGridComponent
                     }
 
@@ -456,6 +454,19 @@ MouseArea {
                             columns: root.columns
                             previewCellAspectRatio: root.previewCellAspectRatio
                             onWallpaperSelected: path => root.selectWallpaperPath(path)
+                        }
+                    }
+
+                    Component {
+                        id: workshopGridComponent
+                        WorkshopGrid {
+                            columns: root.columns
+                            previewCellAspectRatio: root.previewCellAspectRatio
+                            useDarkMode: root.useDarkMode
+                            onWallpaperApplied: {
+                                if (Config.options.wallpaperSelector.closeAfterSelection)
+                                    GlobalStates.wallpaperSelectorOpen = false;
+                            }
                         }
                     }
 
@@ -613,7 +624,6 @@ MouseArea {
                             active: root.source === "local"
                             visible: active
                             sourceComponent: Toolbar {
-                                glass: true
                                 IconToolbarButton {
                                     implicitWidth: height
                                     onClicked: {
@@ -700,10 +710,9 @@ MouseArea {
                         }
 
                         Loader {
-                            active: root.source !== "local" && root.source !== "wallhaven"
+                            active: root.source !== "local" && root.source !== "wallhaven" && root.source !== "workshop"
                             visible: active
                             sourceComponent: Toolbar {
-                                glass: true
                                 ToolbarTextField {
                                     id: onlineSearchField
                                     Component.onCompleted: {
@@ -740,10 +749,183 @@ MouseArea {
                         }
 
                         Loader {
+                            active: root.source === "workshop"
+                            visible: active
+                            sourceComponent: Toolbar {
+                                id: workshopToolbar
+
+                                readonly property var sorts: [
+                                    { value: "trend",   icon: "trending_up", label: Translation.tr("Trending") },
+                                    { value: "recent",  icon: "schedule",    label: Translation.tr("Most recent") },
+                                    { value: "popular", icon: "star",        label: Translation.tr("Most subscribed") },
+                                    { value: "updated", icon: "update",      label: Translation.tr("Recently updated") }
+                                ]
+                                readonly property var currentSort: sorts.find(x => x.value === WorkshopWallpapers.sort) ?? sorts[0]
+                                readonly property bool online: WorkshopWallpapers.mode === "online"
+
+                                Timer {
+                                    id: workshopDebounce
+                                    interval: 600
+                                    onTriggered: WorkshopWallpapers.search(workshopSearchField.text)
+                                }
+
+                                // Online / Library
+                                IconToolbarButton {
+                                    implicitWidth: height
+                                    text: "cloud"
+                                    toggled: workshopToolbar.online
+                                    onClicked: if (!workshopToolbar.online) WorkshopWallpapers.setMode("online")
+                                    StyledToolTip { text: Translation.tr("Browse the Workshop online") }
+                                }
+                                IconToolbarButton {
+                                    implicitWidth: height
+                                    text: "video_library"
+                                    toggled: !workshopToolbar.online
+                                    onClicked: if (workshopToolbar.online) WorkshopWallpapers.setMode("library")
+                                    StyledToolTip { text: Translation.tr("My library: subscribed, downloaded and not downloaded") }
+                                }
+
+                                ToolbarTextField {
+                                    id: workshopSearchField
+                                    Layout.preferredWidth: 200
+                                    placeholderText: workshopToolbar.online ? Translation.tr("Search the Workshop...") : Translation.tr("Search my library...")
+                                    Component.onCompleted: root.activeFilterField = workshopSearchField
+                                    Component.onDestruction: if (root.activeFilterField === workshopSearchField) root.activeFilterField = null
+                                    onTextChanged: if (activeFocus) workshopDebounce.restart()
+                                    onAccepted: { workshopDebounce.stop(); WorkshopWallpapers.search(text) }
+                                    onActiveFocusChanged: root.filterFieldFocused = activeFocus
+                                    Keys.onPressed: event => {
+                                        if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+                                            event.accepted = true
+                                            workshopDebounce.stop()
+                                            WorkshopWallpapers.search(text)
+                                            return
+                                        }
+                                        event.accepted = false
+                                    }
+                                    Connections {
+                                        target: WorkshopWallpapers
+                                        function onModeChanged() { workshopSearchField.text = "" }
+                                    }
+                                }
+
+                                RowLayout {
+                                    visible: workshopToolbar.online && WorkshopWallpapers.results.length > 0
+                                    spacing: 4
+                                    IconToolbarButton {
+                                        implicitWidth: height
+                                        enabled: !WorkshopWallpapers.fetching && WorkshopWallpapers.page > 1
+                                        text: "chevron_left"
+                                        onClicked: WorkshopWallpapers.previousPage()
+                                    }
+                                    StyledText {
+                                        text: WorkshopWallpapers.page + " / " + WorkshopWallpapers.totalPages
+                                        font.pixelSize: Appearance.font.pixelSize.small
+                                        color: Appearance.colors.colOnLayer1
+                                    }
+                                    IconToolbarButton {
+                                        implicitWidth: height
+                                        enabled: !WorkshopWallpapers.fetching && WorkshopWallpapers.page < WorkshopWallpapers.totalPages
+                                        text: "chevron_right"
+                                        onClicked: WorkshopWallpapers.nextPage()
+                                    }
+                                }
+
+                                // Sort (click to cycle)
+                                IconToolbarButton {
+                                    visible: workshopToolbar.online
+                                    implicitWidth: height
+                                    text: workshopToolbar.currentSort.icon
+                                    onClicked: {
+                                        const i = workshopToolbar.sorts.findIndex(x => x.value === WorkshopWallpapers.sort)
+                                        WorkshopWallpapers.setSort(workshopToolbar.sorts[(i + 1) % workshopToolbar.sorts.length].value)
+                                    }
+                                    StyledToolTip {
+                                        text: Translation.tr("Sort: %1 (click to change)").arg(workshopToolbar.currentSort.label)
+                                    }
+                                }
+
+                                // Wallpaper type (click to cycle): Video / Scene / both
+                                IconToolbarButton {
+                                    id: kindButton
+                                    readonly property var kinds: [
+                                        { value: "video", icon: "movie", label: Translation.tr("Video") },
+                                        { value: "scene", icon: "landscape", label: Translation.tr("Scene") },
+                                        { value: "all", icon: "category", label: Translation.tr("Video and Scene") }
+                                    ]
+                                    readonly property var current: kinds.find(k => k.value === WorkshopWallpapers.kind) ?? kinds[0]
+                                    visible: workshopToolbar.online
+                                    implicitWidth: height
+                                    text: current.icon
+                                    onClicked: {
+                                        const i = kinds.findIndex(k => k.value === WorkshopWallpapers.kind)
+                                        WorkshopWallpapers.setKind(kinds[(i + 1) % kinds.length].value)
+                                    }
+                                    StyledToolTip {
+                                        text: Translation.tr("Type: %1 (click to change)").arg(kindButton.current.label)
+                                    }
+                                }
+
+                                // Anime only
+                                IconToolbarButton {
+                                    visible: workshopToolbar.online
+                                    implicitWidth: height
+                                    text: "face_3"
+                                    toggled: WorkshopWallpapers.tag === "Anime"
+                                    onClicked: WorkshopWallpapers.setTag(WorkshopWallpapers.tag === "Anime" ? "" : "Anime")
+                                    StyledToolTip {
+                                        text: WorkshopWallpapers.tag === "Anime" ? Translation.tr("Anime only: on") : Translation.tr("Anime only: off")
+                                    }
+                                }
+
+                                // Mature content filter (NSFW)
+                                IconToolbarButton {
+                                    implicitWidth: height
+                                    text: "18_up_rating"
+                                    toggled: WorkshopWallpapers.mature
+                                    onClicked: WorkshopWallpapers.setMature(!WorkshopWallpapers.mature)
+                                    StyledToolTip {
+                                        text: WorkshopWallpapers.mature
+                                            ? Translation.tr("Mature content: shown (click to hide)")
+                                            : Translation.tr("Mature content: hidden (click to show)")
+                                    }
+                                }
+
+                                IconToolbarButton {
+                                    implicitWidth: height
+                                    text: root.useDarkMode ? "dark_mode" : "light_mode"
+                                    onClicked: root.useDarkMode = !root.useDarkMode
+                                    StyledToolTip {
+                                        text: Translation.tr("Toggle light/dark mode for applied wallpaper")
+                                    }
+                                }
+
+                                // Requirements checklist (warning icon when something required is missing)
+                                IconToolbarButton {
+                                    implicitWidth: height
+                                    text: WorkshopWallpapers.requiredFailing > 0 ? "warning" : "fact_check"
+                                    toggled: gridLoader.item?.showRequirements ?? false
+                                    onClicked: { if (gridLoader.item) gridLoader.item.toggleRequirements() }
+                                    StyledToolTip {
+                                        text: WorkshopWallpapers.requiredFailing > 0
+                                            ? Translation.tr("Requirements: %1 missing (click to see)").arg(WorkshopWallpapers.requiredFailing)
+                                            : Translation.tr("Requirements")
+                                    }
+                                }
+
+                                IconToolbarButton {
+                                    implicitWidth: height
+                                    text: "refresh"
+                                    onClicked: { WorkshopWallpapers.refreshLibraryInfo(); WorkshopWallpapers.refresh() }
+                                    StyledToolTip { text: Translation.tr("Refresh") }
+                                }
+                            }
+                        }
+
+                        Loader {
                             active: root.source === "wallhaven"
                             visible: active
                             sourceComponent: Toolbar {
-                                glass: true
                                 id: wallhavenToolbar
 
                                 property bool _searchFieldReady: false
@@ -863,7 +1045,6 @@ MouseArea {
 
                         ToolbarPairedFab {
                             iconText: "close"
-                            glass: true
                             onClicked: {
                                 Wallpapers.stopPreview();
                                 GlobalStates.wallpaperSelectorOpen = false;

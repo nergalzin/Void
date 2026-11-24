@@ -15,22 +15,12 @@ Item {
     property bool active: true
     signal pageRequested(string key)
 
-    readonly property var liveMatches: Football.matches.filter(match => Football.isLiveish(match))
-    readonly property var nextMatch: {
-        const now = Date.now();
-        const upcoming = Football.matches
-            .filter(match => match.state === "pre" && new Date(match.date).getTime() > now)
-            .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-        return upcoming.length > 0 ? upcoming[0] : null;
-    }
     readonly property var player: MprisController.activePlayer
 
     function styleFor(key) {
         switch (key) {
         case "ai": return { shape: MaterialShape.Shape.Cookie9Sided, container: Appearance.colors.colTertiaryContainer, onContainer: Appearance.colors.colOnTertiaryContainer, accent: Appearance.colors.colTertiary, onAccent: Appearance.colors.colOnTertiary };
-        case "translator": return { shape: MaterialShape.Shape.Clover4Leaf, container: Appearance.colors.colSecondaryContainer, onContainer: Appearance.colors.colOnSecondaryContainer, accent: Appearance.colors.colSecondary, onAccent: Appearance.colors.colOnSecondary };
         case "media": return { shape: MaterialShape.Shape.Sunny, container: Appearance.colors.colPrimaryContainer, onContainer: Appearance.colors.colOnPrimaryContainer, accent: Appearance.colors.colPrimary, onAccent: Appearance.colors.colOnPrimary };
-        case "sports": return { shape: MaterialShape.Shape.Flower, container: Appearance.colors.colTertiaryContainer, onContainer: Appearance.colors.colOnTertiaryContainer, accent: Appearance.colors.colTertiary, onAccent: Appearance.colors.colOnTertiary };
         default: return { shape: MaterialShape.Shape.Cookie6Sided, container: Appearance.colors.colSecondaryContainer, onContainer: Appearance.colors.colOnSecondaryContainer, accent: Appearance.colors.colSecondary, onAccent: Appearance.colors.colOnSecondary };
         }
     }
@@ -42,14 +32,8 @@ Item {
             const count = Ai.messageIDs.length;
             return count > 0 ? `${name} · ${Translation.tr("%1 messages").arg(count)}` : name;
         }
-        case "translator":
-            return Translation.tr("Translate text");
         case "media":
             return root.player ? `${root.player.trackTitle || Translation.tr("Unknown Title")} · ${root.player.trackArtist || Translation.tr("Unknown Artist")}` : Translation.tr("Nothing playing");
-        case "sports":
-            if (root.liveMatches.length > 0) return Translation.tr("%1 live now").arg(root.liveMatches.length);
-            if (root.nextMatch) return `${root.nextMatch.home.name} – ${root.nextMatch.away.name} · ${Qt.formatDateTime(new Date(root.nextMatch.date), "ddd HH:mm")}`;
-            return Translation.tr("No matches");
         case "anime":
             return Translation.tr("Browse images");
         default:
@@ -59,7 +43,6 @@ Item {
 
     function isLive(key) {
         if (key === "media") return root.player?.isPlaying ?? false;
-        if (key === "sports") return root.liveMatches.length > 0;
         return false;
     }
 

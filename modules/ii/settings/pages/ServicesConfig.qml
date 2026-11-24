@@ -1,3 +1,4 @@
+import qs
 import QtQuick
 import QtQuick.Layouts
 import qs.services
@@ -45,37 +46,6 @@ ContentPage {
                 wrapMode: TextEdit.Wrap
                 onTextChanged: {
                     Config.options.networking.userAgent = text;
-                }
-            }
-        }
-
-        ContentSection {
-            icon: "music_cast"
-            shape: MaterialShape.Shape.Oval
-            title: Translation.tr("Music Recognition")
-
-            GroupedList {
-                ConfigSpinBox {
-                    icon: "timer_off"
-                    text: Translation.tr("Total duration timeout (s)")
-                    value: Config.options.musicRecognition.timeout
-                    from: 10
-                    to: 100
-                    stepSize: 2
-                    onValueChanged: {
-                        Config.options.musicRecognition.timeout = value;
-                    }
-                }
-                ConfigSpinBox {
-                    icon: "av_timer"
-                    text: Translation.tr("Polling interval (s)")
-                    value: Config.options.musicRecognition.interval
-                    from: 2
-                    to: 10
-                    stepSize: 1
-                    onValueChanged: {
-                        Config.options.musicRecognition.interval = value;
-                    }
                 }
             }
         }
@@ -149,6 +119,52 @@ ContentPage {
                     checked: Config.options.search.clipboardPreviewPopup
                     onCheckedChanged: {
                         Config.options.search.clipboardPreviewPopup = checked;
+                    }
+                }
+                ConfigSwitch {
+                    buttonIcon: "content_paste"
+                    text: Translation.tr("Save clipboard history")
+                    checked: Config.options.search.saveClipboardHistory
+                    onCheckedChanged: {
+                        Config.options.search.saveClipboardHistory = checked;
+                    }
+                }
+                RowLayout {
+                    id: clipboardClearRow
+                    property bool confirming: false
+                    spacing: 10
+                    Layout.bottomMargin: 6
+                    Layout.leftMargin: 5
+                    MaterialSymbol {
+                        text: "history"
+                        iconSize: Appearance.font.pixelSize.larger
+                        color: Appearance.colors.colOnSecondaryContainer
+                    }
+                    StyledText {
+                        Layout.fillWidth: true
+                        text: Translation.tr("Clipboard history: %1 items").arg(Cliphist.entries.length)
+                        font.pixelSize: Appearance.font.pixelSize.small
+                        color: Appearance.colors.colOnSecondaryContainer
+                    }
+                    RippleButtonWithIcon {
+                        materialIcon: clipboardClearRow.confirming ? "warning" : "delete_sweep"
+                        mainText: clipboardClearRow.confirming ? Translation.tr("Click again to erase everything") : Translation.tr("Clear history")
+                        enabled: Cliphist.entries.length > 0 || clipboardClearRow.confirming
+                        onClicked: {
+                            if (!clipboardClearRow.confirming) {
+                                clipboardClearRow.confirming = true;
+                                clipboardConfirmTimer.restart();
+                            } else {
+                                clipboardClearRow.confirming = false;
+                                clipboardConfirmTimer.stop();
+                                Cliphist.wipe();
+                            }
+                        }
+                    }
+                    Timer {
+                        id: clipboardConfirmTimer
+                        interval: 4000
+                        onTriggered: clipboardClearRow.confirming = false
                     }
                 }
             }
@@ -241,16 +257,6 @@ ContentPage {
                                 Config.options.search.prefix.app = value;
                             }
                         }
-                        ConfigTextArea {
-                            Layout.fillWidth: true
-                            buttonIcon: "keyboard_command_key"
-                            fieldWidth: 100
-                            text: Translation.tr("Keybinds")
-                            value: Config.options.search.prefix.keybinds
-                            onValueChanged: {
-                                Config.options.search.prefix.keybinds = value;
-                            }
-                        }
                     }
                 }
             }
@@ -287,6 +293,63 @@ ContentPage {
             title: Translation.tr("Webapps")
 
             GroupedList {
+                ConfigRow {
+                    Layout.fillWidth: true
+                    MaterialSymbol {
+                        Layout.leftMargin: 8
+                        text: "public"
+                        iconSize: Appearance.font.pixelSize.larger
+                        color: Appearance.colors.colOnSecondaryContainer
+                    }
+                    StyledText {
+                        Layout.fillWidth: true
+                        text: Translation.tr("Browser")
+                        color: Appearance.colors.colOnSecondaryContainer
+                    }
+                    StyledComboBox {
+                        id: webappBrowserBox
+                        Layout.preferredWidth: 220
+                        readonly property var options: [{ id: "", name: Translation.tr("Automatic") }].concat(Webapps.browsers)
+                        model: options.map(b => b.name)
+                        currentIndex: Math.max(0, options.findIndex(b => b.id === (Config.options.webapps.browser ?? "")))
+                        onActivated: index => Config.options.webapps.browser = options[index].id
+                    }
+                }
+                ConfigSwitch {
+                    buttonIcon: "shield_person"
+                    text: Translation.tr("Isolated profile (separate logins and cookies)")
+                    checked: Config.options.webapps.isolated
+                    onCheckedChanged: Config.options.webapps.isolated = checked
+                    StyledToolTip {
+                        text: Translation.tr("Each webapp gets its own browser profile, apart from your main browser and from other webapps")
+                    }
+                }
+                ConfigRow {
+                    Layout.fillWidth: true
+                    MaterialSymbol {
+                        Layout.leftMargin: 8
+                        text: "picture_in_picture"
+                        iconSize: Appearance.font.pixelSize.larger
+                        color: Appearance.colors.colOnSecondaryContainer
+                    }
+                    StyledText {
+                        Layout.fillWidth: true
+                        text: Translation.tr("Quick window (Super+Shift+D)")
+                        color: Appearance.colors.colOnSecondaryContainer
+                    }
+                    StyledComboBox {
+                        id: webappQuickBox
+                        Layout.preferredWidth: 220
+                        readonly property var options: [{ id: "", name: "Duck.ai" }].concat(
+                            Webapps.items.filter(item => item.id !== Webapps.duckAiId).map(item => ({ id: item.id, name: item.name })))
+                        model: options.map(o => o.name)
+                        currentIndex: Math.max(0, options.findIndex(o => o.id === (Config.options.webapps.quickWebapp ?? "")))
+                        onActivated: index => Config.options.webapps.quickWebapp = options[index].id
+                        StyledToolTip {
+                            text: Translation.tr("The shortcut shows/hides this webapp floating over any workspace. In the app menu, type \"%1\" and a question to ask Duck.ai").arg((Config.options.search.prefix.duckAi ?? "duck ").trim())
+                        }
+                    }
+                }
                 ConfigTextArea {
                     id: webappUrlField
                     Layout.fillWidth: true
@@ -303,6 +366,15 @@ ContentPage {
                         webappUrlField.value = "";
                     }
                 }
+            }
+
+            StyledText {
+                visible: Webapps.browsers.length === 0
+                Layout.fillWidth: true
+                Layout.leftMargin: 8
+                text: Translation.tr("No Chromium-based browser found (Chromium, Chrome, Brave, Helium, Vivaldi, Edge)")
+                color: Appearance.colors.colSubtext
+                wrapMode: Text.Wrap
             }
 
             StyledText {
@@ -328,18 +400,59 @@ ContentPage {
                             delegate: RowLayout {
                                 id: webappRow
                                 required property var modelData
+                                property bool editing: false
                                 Layout.fillWidth: true
                                 Layout.leftMargin: 8
                                 Layout.rightMargin: 8
                                 spacing: 12
 
-                                Image {
-                                    Layout.preferredWidth: 28
-                                    Layout.preferredHeight: 28
-                                    source: webappRow.modelData.icon.startsWith("/") ? "file://" + webappRow.modelData.icon : ""
-                                    sourceSize: Qt.size(56, 56)
-                                    fillMode: Image.PreserveAspectFit
-                                    asynchronous: true
+                                function startEditing() {
+                                    webappNameField.text = webappRow.modelData.name;
+                                    webappRow.editing = true;
+                                    webappNameField.forceActiveFocus();
+                                    webappNameField.selectAll();
+                                }
+                                function saveName() {
+                                    const name = webappNameField.text.trim();
+                                    if (name !== "" && name !== webappRow.modelData.name)
+                                        Webapps.rename(webappRow.modelData.id, name);
+                                    webappRow.editing = false;
+                                }
+
+                                // Click the icon to choose your own (theme icon or image)
+                                RippleButton {
+                                    id: webappIconButton
+                                    implicitWidth: 40
+                                    implicitHeight: 40
+                                    buttonRadius: Appearance.rounding.small
+                                    onClicked: Webapps.chooseIcon(webappRow.modelData.id)
+                                    contentItem: Item {
+                                        Image {
+                                            anchors.centerIn: parent
+                                            width: 28
+                                            height: 28
+                                            source: SystemAppearance.iconPath(webappRow.modelData.icon, "applications-internet")
+                                            sourceSize: Qt.size(56, 56)
+                                            fillMode: Image.PreserveAspectFit
+                                            asynchronous: true
+                                        }
+                                        Rectangle {
+                                            anchors.right: parent.right
+                                            anchors.bottom: parent.bottom
+                                            width: 16
+                                            height: 16
+                                            radius: 8
+                                            visible: webappIconButton.hovered
+                                            color: Appearance.colors.colPrimary
+                                            MaterialSymbol {
+                                                anchors.centerIn: parent
+                                                text: "edit"
+                                                iconSize: 11
+                                                color: Appearance.colors.colOnPrimary
+                                            }
+                                        }
+                                    }
+                                    StyledToolTip { text: Translation.tr("Change icon") }
                                 }
 
                                 ColumnLayout {
@@ -348,13 +461,24 @@ ContentPage {
 
                                     StyledText {
                                         Layout.fillWidth: true
+                                        visible: !webappRow.editing
                                         text: webappRow.modelData.name
                                         color: Appearance.colors.colOnLayer1
                                         elide: Text.ElideRight
                                     }
+                                    MaterialTextField {
+                                        id: webappNameField
+                                        Layout.fillWidth: true
+                                        visible: webappRow.editing
+                                        placeholderText: Translation.tr("Webapp name")
+                                        maximumLength: 80
+                                        onAccepted: webappRow.saveName()
+                                        Keys.onEscapePressed: webappRow.editing = false
+                                    }
                                     StyledText {
                                         Layout.fillWidth: true
-                                        text: webappRow.modelData.url
+                                        text: [webappRow.modelData.url, Webapps.browserName(webappRow.modelData.browser),
+                                               webappRow.modelData.isolated ? Translation.tr("isolated") : ""].filter(t => t).join(" · ")
                                         font.pixelSize: Appearance.font.pixelSize.smaller
                                         color: Appearance.colors.colSubtext
                                         elide: Text.ElideRight
@@ -362,11 +486,38 @@ ContentPage {
                                 }
 
                                 RippleButtonWithIcon {
+                                    visible: webappRow.editing
+                                    materialIcon: "check"
+                                    mainText: Translation.tr("Save")
+                                    onClicked: webappRow.saveName()
+                                }
+                                RippleButtonWithIcon {
+                                    visible: webappRow.editing
+                                    materialIcon: "close"
+                                    mainText: Translation.tr("Cancel")
+                                    onClicked: webappRow.editing = false
+                                }
+                                RippleButtonWithIcon {
+                                    visible: !webappRow.editing && (webappRow.modelData.customIcon ?? false)
+                                    materialIcon: "restart_alt"
+                                    mainText: ""
+                                    StyledToolTip { text: Translation.tr("Back to the automatic icon") }
+                                    onClicked: Webapps.resetIcon(webappRow.modelData.id)
+                                }
+                                RippleButtonWithIcon {
+                                    visible: !webappRow.editing
+                                    materialIcon: "edit"
+                                    mainText: Translation.tr("Rename")
+                                    onClicked: webappRow.startEditing()
+                                }
+                                RippleButtonWithIcon {
+                                    visible: !webappRow.editing
                                     materialIcon: "open_in_new"
                                     mainText: Translation.tr("Open")
                                     onClicked: Webapps.open(webappRow.modelData.id)
                                 }
                                 RippleButtonWithIcon {
+                                    visible: !webappRow.editing
                                     materialIcon: "delete"
                                     mainText: Translation.tr("Remove")
                                     onClicked: Webapps.remove(webappRow.modelData.id)
@@ -401,6 +552,141 @@ ContentPage {
                     stepSize: 60
                     onValueChanged: {
                         Config.options.updates.checkInterval = value;
+                    }
+                }
+            }
+        }
+
+        ContentSection {
+            icon: "sports_esports"
+            shape: MaterialShape.Shape.Cookie6Sided
+            title: Translation.tr("Gamepad")
+
+            GroupedList {
+                ConfigSwitch {
+                    buttonIcon: "sports_esports"
+                    text: Translation.tr("Open a panel with a controller button")
+                    checked: Config.options.gamepad.enable
+                    onCheckedChanged: { Config.options.gamepad.enable = checked }
+                    StyledToolTip {
+                        text: Translation.tr("Watches connected game controllers (USB or Bluetooth).\nGames still receive every button as usual.")
+                    }
+                }
+                ConfigSwitch {
+                    enabled: Config.options.gamepad.enable
+                    buttonIcon: "gamepad"
+                    text: Translation.tr("Navigate the widget overlay with the controller")
+                    checked: Config.options.gamepad.navigateOverlay
+                    onCheckedChanged: { Config.options.gamepad.navigateOverlay = checked }
+                    StyledToolTip {
+                        text: Translation.tr("While the overlay (Super + G) is open: d-pad / left stick to move,\nbottom button to select, right button to close, bumpers for volume.\nThe controller is reserved for the shell only while the overlay is open.")
+                    }
+                }
+                ConfigSwitch {
+                    enabled: Config.options.gamepad.enable && Config.options.gamepad.navigateOverlay
+                    buttonIcon: "pause_circle"
+                    text: Translation.tr("Pause the game: Xbox and standard controllers")
+                    checked: Config.options.gamepad.pauseGameXbox
+                    onCheckedChanged: { Config.options.gamepad.pauseGameXbox = checked }
+                    StyledToolTip {
+                        text: Translation.tr("Pauses the focused game while the overlay is open, when it was opened with an Xbox (or other standard) controller.\nThese controllers are already blocked from the game, so this is optional.")
+                    }
+                }
+                ConfigSwitch {
+                    enabled: Config.options.gamepad.enable && Config.options.gamepad.navigateOverlay
+                    buttonIcon: "pause_circle"
+                    text: Translation.tr("Pause the game: PlayStation and Nintendo controllers")
+                    checked: Config.options.gamepad.pauseGameDirect
+                    onCheckedChanged: { Config.options.gamepad.pauseGameDirect = checked }
+                    StyledToolTip {
+                        text: Translation.tr("Many games (emulators, Steam) read these controllers directly,\nso they would still react to the buttons behind the overlay.")
+                    }
+                }
+                ConfigComboBox {
+                    Layout.fillWidth: true
+                    enabled: Config.options.gamepad.enable
+                    buttonIcon: "open_in_new"
+                    text: Translation.tr("Action")
+                    textRole: "displayName"
+                    model: GlobalStates.hotCornerOptions.filter(o => o.value !== "none")
+                    currentValue: Config.options.gamepad.action
+                    onSelected: newValue => { Config.options.gamepad.action = newValue }
+                }
+                ConfigSelectionArray {
+                    text: Translation.tr("DualSense light bar")
+                    icon: "lightbulb"
+                    currentValue: Config.options.gamepad.lightMode
+                    onSelected: newValue => { ControllerLight.setMode(newValue) }
+                    options: [
+                        { displayName: Translation.tr("Normal"), icon: "restart_alt", value: "default" },
+                        { displayName: Translation.tr("Theme"),  icon: "palette",     value: "theme" },
+                        { displayName: Translation.tr("Off"),    icon: "light_off",   value: "off" }
+                    ]
+                }
+            }
+
+            ContentSubsection {
+                title: Translation.tr("Button")
+                tooltip: Translation.tr("Click \"Pick\" and press the button you want on the controller")
+                enabled: Config.options.gamepad.enable
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 10
+                    MaterialSymbol {
+                        text: "gamepad"
+                        iconSize: 22
+                        color: Appearance.colors.colOnLayer1
+                    }
+                    StyledText {
+                        Layout.fillWidth: true
+                        wrapMode: Text.Wrap
+                        text: Gamepad.learning ? Translation.tr("Press a button on the controller…")
+                            : Gamepad.buttonLabel(Config.options.gamepad.button)
+                        color: Gamepad.learning ? Appearance.colors.colPrimary : Appearance.colors.colOnLayer1
+                    }
+                    RippleButtonWithIcon {
+                        materialIcon: Gamepad.learning ? "close" : "ads_click"
+                        mainText: Gamepad.learning ? Translation.tr("Cancel") : Translation.tr("Pick")
+                        enabled: Gamepad.learning || Gamepad.devices.length > 0
+                        onClicked: Gamepad.learning ? Gamepad.cancelLearning() : Gamepad.startLearning()
+                    }
+                    RippleButtonWithIcon {
+                        visible: Config.options.gamepad.button !== "BTN_MODE" && !Gamepad.learning
+                        materialIcon: "restart_alt"
+                        mainText: Translation.tr("Default")
+                        onClicked: Config.options.gamepad.button = "BTN_MODE"
+                    }
+                }
+            }
+
+            ContentSubsection {
+                title: Translation.tr("Status")
+                visible: Config.options.gamepad.enable
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 10
+                    MaterialSymbol {
+                        Layout.alignment: Qt.AlignTop
+                        text: Gamepad.error !== "" ? "error" : Gamepad.devices.length > 0 ? "check_circle" : "videogame_asset_off"
+                        iconSize: 22
+                        color: Gamepad.error !== "" ? Appearance.colors.colError : Appearance.colors.colOnLayer1
+                    }
+                    StyledText {
+                        Layout.fillWidth: true
+                        wrapMode: Text.Wrap
+                        color: Appearance.colors.colOnLayer1
+                        text: {
+                            switch (Gamepad.error) {
+                            case "no_evdev": return Translation.tr("The python-evdev package is missing. Install it (Arch: sudo pacman -S python-evdev) and toggle this off and on.");
+                            case "no_permission": return Translation.tr("No permission to read controllers. Add your user to the \"input\" group (sudo usermod -aG input $USER) and log in again.");
+                            case "crashed": return Translation.tr("The controller listener stopped unexpectedly; retrying…");
+                            }
+                            if (Gamepad.devices.length === 0) return Translation.tr("No controller connected. Plug one in or pair it; it's detected automatically.");
+                            let s = Translation.tr("Connected: %1").arg(Gamepad.devices.map(d => `${d.name} (${Gamepad.brandNames[d.brand] ?? d.brand})`).join(", "));
+                            if (Gamepad.lastPressed) s += "\n" + Translation.tr("Last press: %1").arg(Gamepad.lastPressed);
+                            return s;
+                        }
                     }
                 }
             }

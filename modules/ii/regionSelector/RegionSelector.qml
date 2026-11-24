@@ -50,24 +50,8 @@ Scope {
         GlobalStates.regionSelectorOpen = true
     }
 
-    function search() {
-        root.action = RegionSelection.SnipAction.Search
-        if (Config.options.search.imageSearch.useCircleSelection) {
-            root.selectionMode = RegionSelection.SelectionMode.Circle
-        } else {
-            root.selectionMode = RegionSelection.SelectionMode.RectCorners
-        }
-        GlobalStates.regionSelectorOpen = true
-    }
-
     function ocr() {
         root.action = RegionSelection.SnipAction.CharRecognition
-        root.selectionMode = RegionSelection.SelectionMode.RectCorners
-        GlobalStates.regionSelectorOpen = true
-    }
-
-    function qr() {
-        root.action = RegionSelection.SnipAction.QrCode
         root.selectionMode = RegionSelection.SelectionMode.RectCorners
         GlobalStates.regionSelectorOpen = true
     }
@@ -99,14 +83,8 @@ Scope {
         function screenshot() {
             root.screenshot()
         }
-        function search() {
-            root.search()
-        }
         function ocr() {
             root.ocr()
-        }
-        function qr() {
-            root.qr()
         }
         function record() {
             root.record()
@@ -122,19 +100,9 @@ Scope {
         onPressed: root.screenshot()
     }
     CompositorGlobalShortcut {
-        name: "regionSearch"
-        description: "Searches the selected region"
-        onPressed: root.search()
-    }
-    CompositorGlobalShortcut {
         name: "regionOcr"
         description: "Recognizes text in the selected region"
         onPressed: root.ocr()
-    }
-    CompositorGlobalShortcut {
-        name: "regionQr"
-        description: "Scans a QR code in the selected region"
-        onPressed: root.qr()
     }
     CompositorGlobalShortcut {
         name: "regionRecord"

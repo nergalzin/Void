@@ -25,15 +25,16 @@ ContentPage {
         { id: "resources",         name: Translation.tr("Resources"),            icon: "empty_dashboard" },
         { id: "systemIcons",       name: Translation.tr("System Icons"),         icon: "info" },
         { id: "networkSpeed",      name: Translation.tr("Network Speed"),        icon: "network_check" },
+        { id: "mega",              name: Translation.tr("MEGA"),                 icon: "cloud" },
         { id: "clockWidget",       name: Translation.tr("Clock"),                icon: "schedule" },
         { id: "utilButtons",       name: Translation.tr("Util Buttons"),         icon: "toggle_on" },
         { id: "sysTray",           name: Translation.tr("Tray"),                 icon: "inbox" },
         { id: "batteryIndicator",  name: Translation.tr("Battery"),              icon: "battery_android_frame_full" },
+        { id: "controllerBattery", name: Translation.tr("Controller Battery"),   icon: "sports_esports" },
         { id: "bluetooth",         name: Translation.tr("Bluetooth"),            icon: "bluetooth" },
         { id: "activeWindow",      name: Translation.tr("Active Window"),        icon: "subtitles" },
         { id: "powerButton",       name: Translation.tr("Power Button"),         icon: "power_settings_new" },
         { id: "updatesCount",      name: Translation.tr("Updates"),              icon: "deployed_code_update" },
-        { id: "docktoPanel",       name: Translation.tr("Dock to Panel"),        icon: "apps" },
         { id: "visualizer",        name: Translation.tr("Visualizer"),           icon: "graphic_eq" },
         { id: "hyprlandXkbIndicator",   name: Translation.tr("Keyboard Layout"), icon: "keyboard" },
         { id: "divisor",            name: Translation.tr("Divider"),             icon: "horizontal_distribute" },
@@ -264,6 +265,16 @@ ContentPage {
                         { displayName: Translation.tr("M3 Hug"), icon: "category", value: 4 },
                         { displayName: Translation.tr("Panel"), icon: "toolbar",   value: 5 }
                     ]
+                }
+                ConfigSwitch {
+                    buttonIcon: "stars"
+                    text: Translation.tr("Highlight widgets in Hug styles")
+                    enabled: (Config.options.bar.cornerStyle === 0 || Config.options.bar.cornerStyle === 6) && !Config.options.bar.vertical
+                    checked: Config.options.bar.hugHighlight
+                    onCheckedChanged: { Config.options.bar.hugHighlight = checked; }
+                    StyledToolTip {
+                        text: Translation.tr("Hug and Split Hug (horizontal bar): widgets sit on highlighted Material pills\nand the power button becomes a round button, like in M3 and M3 Hug.")
+                    }
                 }
                 ConfigSelectionArray {
                     text: Translation.tr("Group style")
@@ -691,6 +702,15 @@ ContentPage {
                         { displayName: Translation.tr("Ticks"),   icon: "more_vert",             value: "ticks" }
                     ]
                 }
+                ConfigSwitch {
+                    enabled: !page.defaultWorkspacesDesign
+                    buttonIcon: "capsule"; text: Translation.tr("Workspaces on a capsule")
+                    checked: Config.options.bar.workspaces.capsule
+                    onCheckedChanged: { Config.options.bar.workspaces.capsule = checked; }
+                    StyledToolTip {
+                        text: Translation.tr("GNOME, Dots and Ticks styles: the indicator sits on a soft rounded capsule\nand the GNOME dots are a little bigger.")
+                    }
+                }
                 ConfigSpinBox {
                     icon: "view_column"; text: Translation.tr("Workspaces shown")
                     value: Config.options.bar.workspaces.shown
@@ -859,19 +879,49 @@ ContentPage {
         ContentSection {
             icon: "neurology"
             title: Translation.tr("AI Usage")
+            visible: page.isUsed("aiUsage")
 
-            GroupedList {
-                ConfigSwitch {
-                    buttonIcon: "terminal"
-                    text: Translation.tr("Claude Code")
-                    checked: Config.options.bar.aiUsage.claudeEnabled
-                    onCheckedChanged: Config.options.bar.aiUsage.claudeEnabled = checked
+            ContentSubsection {
+                title: Translation.tr("Show in the bar")
+                tooltip: Translation.tr("Each one shows its logo and the plan usage %. Hover for every limit, click a logo to open Claude or ChatGPT.")
+                GroupedList {
+                    ConfigSwitch {
+                        buttonIcon: "terminal"
+                        text: Translation.tr("Claude Code (5-hour session and weekly limits)")
+                        checked: Config.options.bar.aiUsage.claudeEnabled
+                        onCheckedChanged: { Config.options.bar.aiUsage.claudeEnabled = checked }
+                    }
+                    ConfigSwitch {
+                        buttonIcon: "code"
+                        text: Translation.tr("Codex (ChatGPT plan limits)")
+                        checked: Config.options.bar.aiUsage.codexEnabled
+                        onCheckedChanged: { Config.options.bar.aiUsage.codexEnabled = checked }
+                    }
                 }
-                ConfigSwitch {
-                    buttonIcon: "code"
-                    text: Translation.tr("Codex")
-                    checked: Config.options.bar.aiUsage.codexEnabled
-                    onCheckedChanged: Config.options.bar.aiUsage.codexEnabled = checked
+            }
+
+            ContentSubsection {
+                title: Translation.tr("Online usage data")
+                tooltip: Translation.tr("Same switches as the AI usage tab of the cheat sheet.\nEach one reads the login of the app on this PC and asks the provider's servers for your usage.\nNothing is sent anywhere else, and the login is never changed or renewed.")
+                GroupedList {
+                    ConfigSwitch {
+                        buttonIcon: "token"
+                        text: Translation.tr("Claude usage (reads the Claude Code login)")
+                        checked: Config.options.cheatsheet.aiUsage.claude
+                        onCheckedChanged: { Config.options.cheatsheet.aiUsage.claude = checked }
+                        StyledToolTip {
+                            text: Translation.tr("Reads ~/.claude/.credentials.json and queries api.anthropic.com")
+                        }
+                    }
+                    ConfigSwitch {
+                        buttonIcon: "token"
+                        text: Translation.tr("ChatGPT usage (reads the Codex login)")
+                        checked: Config.options.cheatsheet.aiUsage.chatgpt
+                        onCheckedChanged: { Config.options.cheatsheet.aiUsage.chatgpt = checked }
+                        StyledToolTip {
+                            text: Translation.tr("Reads ~/.codex/auth.json and queries chatgpt.com")
+                        }
+                    }
                 }
             }
         }

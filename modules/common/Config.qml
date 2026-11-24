@@ -81,43 +81,39 @@ Singleton {
             property string panelFamily: "ii" // "ii", "waffle"
 
             property JsonObject policies: JsonObject {
-                property int ai: 1 // 0: No | 1: Yes | 2: Local
+                property int ai: 2 // 0: No | 1 or 2: Local models only (online AI removed in this fork)
                 property int weeb: 1 // 0: No | 1: Open | 2: Closet
             }
 
             property JsonObject ai: JsonObject {
                 property string systemPrompt: "## Style\n- Use casual tone, don't be formal!\n- Always be brief and to the point, unless asked otherwise\n- Don't repeat the user's question\n- Be approachable: Avoid using overly complicated, domain-specific terms and provide analogies when asked to explain a concept\n\n## Context (ignore when irrelevant)\n- You are a helpful and inspiring sidebar assistant on a {DISTRO} Linux system\n- Desktop environment: {DE}\n- Current date & time: {DATETIME}\n- Focused app: {WINDOWCLASS}\n\n## Presentation\n- Use Markdown features in your response: \n  - **Bold** text to **highlight keywords** in your response\n  - **Split long information into small sections** with h2 headers and a relevant emoji at the start of it (for example `## 🐧 Linux`). Bullet points are preferred over long paragraphs, unless you're offering writing support or instructed otherwise by the user.\n- Asked to compare different options? You should firstly use a table to compare the main aspects, then elaborate or include relevant comments from online forums *after* the table. Make sure to provide a final recommendation for the user's use case!\n- Use LaTeX formatting for mathematical and scientific notations whenever appropriate. Enclose all LaTeX '$$' delimiters. NEVER generate LaTeX code in a latex block unless the user explicitly asks for it. DO NOT use LaTeX for regular documents (resumes, letters, essays, CVs, etc.).\n\nThanks!\n"
                 property string tool: "functions" // search, functions, or none
+                // Which functions the model may call when the tool is "functions"
+                property JsonObject functions: JsonObject {
+                    property bool readConfig: true   // get_shell_config
+                    property bool editConfig: true   // set_shell_config (needs readConfig)
+                    property bool runCommands: true  // run_shell_command (each command asks first)
+                }
                 property string vllmEndpoint: "http://localhost:8000"
-                property list<var> extraModels: [
-                    {
-                        "api_format": "openai", // Most of the time you want "openai". Use "gemini" for Google's models
-                        "description": "This is a custom model. Edit the config to add more! | Anyway, this is DeepSeek R1 Distill LLaMA 70B",
-                        "endpoint": "https://openrouter.ai/api/v1/chat/completions",
-                        "homepage": "https://openrouter.ai/deepseek/deepseek-r1-distill-llama-70b:free", // Not mandatory
-                        "icon": "spark-symbolic", // Not mandatory
-                        "key_get_link": "https://openrouter.ai/settings/keys", // Not mandatory
-                        "key_id": "openrouter",
-                        "model": "deepseek/deepseek-r1-distill-llama-70b:free",
-                        "name": "Custom: DS R1 Dstl. LLaMA 70B",
-                        "requires_key": true
-                    }
-                ]
+                // Ollama started and managed by the shell (Intelligence > model list > manage)
+                property JsonObject ollama: JsonObject {
+                    property string modelsDir: ""    // empty = ~/.ollama/models
+                    property string modelsMount: ""  // must be mounted before Ollama starts ("" = no check)
+                    property bool autostart: false   // start Ollama together with the shell
+                    property bool useFreeVram: true  // catalog ranking counts only the VRAM other apps leave free
+                    property bool gameMode: false    // free the GPU (unload models) while a game runs
+                    property string gamePattern: "^(steam_app_\\d+|gamescope.*)$" // window classes that count as a game
+                }
+                // Extra LOCAL models (OpenAI-compatible endpoint on localhost), e.g.
+                // { "name": "LM Studio", "model": "qwen2.5-7b", "endpoint": "http://localhost:1234/v1/chat/completions" }
+                // Online endpoints are ignored.
+                property list<var> extraModels: []
             }
 
             property JsonObject appearance: JsonObject {
                 property string uiBackground: "themed"
                 property bool extraBackgroundTint: true
                 property int fakeScreenRounding: 2 // 0: None | 1: Always | 2: When not fullscreen
-                property JsonObject icons: JsonObject {
-                    property string theme: "Tela"
-                    property bool followScheme: true
-                    property bool dynamicColor: true
-                    property bool preventBreezeOverride: true
-                    property int keepGenerated: 6
-                    property string lightVariant: "" // Optional explicit override, empty = auto
-                    property string darkVariant: ""
-                }
                 property JsonObject fonts: JsonObject {
                     property string main: "Google Sans Flex"
                     property string numbers: "Google Sans Flex"
@@ -136,8 +132,9 @@ Singleton {
                 property JsonObject wallpaperTheming: JsonObject {
                     property bool enableAppsAndShell: true
                     property bool enableQtApps: true
-                    property bool lockKonsoleColors: true
                     property bool enableTerminal: true
+                    property bool papirusFolderColor: false // Tint Papirus folder icons with the wallpaper color
+                    property string papirusFolderChoice: "" // Fixed Papirus color picked in Settings > Quick (wins over the wallpaper match)
                     property JsonObject terminalGenerationProps: JsonObject {
                         property real harmony: 0.6
                         property real harmonizeThreshold: 100
@@ -170,7 +167,6 @@ Singleton {
                 property string descriptionText: "::distro::"
                 property string displayName: ""
                 property bool onlinePresets: false
-                property bool uploadGuideSeen: false
 
             }
 
@@ -249,11 +245,42 @@ Singleton {
             }
 
             property JsonObject settings: JsonObject {
-                property string style: "default" // default - minimal - dashboard
+                property string style: "default" // default - minimal
                 property real borderSize: 1
-                property real animationSpeed: 1
                 property string borderColor: "layer0Border"
                 property list<string> collapsedSections: []
+            }
+
+            property JsonObject sddm: JsonObject {
+                property bool useShellWallpaper: true // false = use customImage
+                property string customImage: ""
+                property bool autoColors: true // generate theme colors from the wallpaper palette
+                property bool userPicture: false // show the user's avatar above the login fields
+                property bool showPassword: false // show password characters while typing
+                property bool clock24h: false // dotfiles default: hh:mm AP
+                property string loginText: "Login"
+                property int radius: 10
+                property string fontFamily: "Atkinson Hyperlegible"
+                property int dateSize: 36 // dotfiles defaults
+                property int timeSize: 48
+                property bool dateBold: false
+                property bool timeBold: true
+                property string cDateColor: "" // "" = automatic
+                property string cTimeColor: "" // "" = automatic
+                property string cInputColor: "" // "" = automatic
+                property string cInputTextColor: "" // "" = automatic
+                property string cInputBorderColor: "" // "" = automatic
+                property string cLoginButtonColor: "" // "" = automatic
+                property string cLoginButtonTextColor: "" // "" = automatic
+                property string cSessionButtonColor: "" // "" = automatic
+                property string cSessionIconColor: "" // "" = automatic
+                property string cPowerButtonColor: "" // "" = automatic
+                property string cPowerIconColor: "" // "" = automatic
+                property string cPopupColor: "" // "" = automatic
+                property string cPopupActiveColor: "" // "" = automatic
+                property string cPopupActiveTextColor: "" // "" = automatic
+                property string cUserColor: "" // "" = automatic
+                property string cUserBorderColor: "" // "" = automatic
             }
 
             property JsonObject background: JsonObject {
@@ -277,17 +304,6 @@ Singleton {
                 property JsonObject widgets: JsonObject {
                     property bool blurWidgets: false
                     property real blurRadius: 32
-                    property JsonObject glass: JsonObject {
-                        property bool enable: false
-                        property string tint: "transparent"
-                        property real tintStrength: 0.3
-                        property real rimWidth: 16
-                        property real pull: 26
-                        property real split: 0.06
-                        property real haze: 3
-                        property real vividness: 1.3
-                        property real sheen: 0.55
-                    }
                     property bool shadow: true
                     property list<string> menuHidden: []
                     property JsonObject clock: JsonObject {
@@ -301,7 +317,7 @@ Singleton {
                         property string color: ""
                         property string styleLocked: "cookie"  // Options: "cookie", "digital", "daily", "pixel"
                         property JsonObject cookie: JsonObject {
-                            property bool aiStyling: false
+                            property string preset: "none"
                             property int sides: 14
                             property string dialNumberStyle: "full"   // Options: "dots" , "numbers", "full" , "none"
                             property string hourHandStyle: "fill"     // Options: "classic", "fill", "hollow", "hide"
@@ -498,6 +514,8 @@ Singleton {
                 property JsonObject liveWallpaper: JsonObject {
                     property bool pauseOnBattery: false // Pause as soon as the charger is out
                     property real pauseBelowPercent: 0 // Or only under this charge, 0 to ignore
+                    property int sceneFps: 30 // Wallpaper Engine scenes (linux-wallpaperengine)
+                    property bool sceneAudio: false
                 }
                 property list<string> screenList: [] 
                 property string wallpaperPath: ""
@@ -532,6 +550,8 @@ Singleton {
                     }
                 }
                 property bool showFrame: false
+                // Hug / Split Hug: highlighted Material pills and round power button, like M3
+                property bool hugHighlight: false
                 property real frameThickness: 4
                 property string frameColor: "black"
                 property bool followFrameColor: false
@@ -560,6 +580,8 @@ Singleton {
                 }
 
                 property JsonObject aiUsage: JsonObject {
+                    // Which providers the bar widget shows. The numbers come from the
+                    // opt-in cheatsheet.aiUsage.<claude|chatgpt> keys (online plan usage)
                     property bool claudeEnabled: true
                     property bool codexEnabled: true
                     property int tokenLimit: 1000000
@@ -607,6 +629,7 @@ Singleton {
                     property bool showAppIcons: false
                     property string indicatorStyle: "dot" // "dot" or "icon"
                     property string style: "default" // "default", "gnome", "dots", "ticks"
+                    property bool capsule: false // GNOME / Dots / Ticks: indicator sits on a soft capsule
                     property bool alwaysShowNumbers: true
                     property int showNumberDelay: 300 // milliseconds
                     property list<string> numberMap: ["1", "2"] // Characters to show instead of numbers on workspace indicator
@@ -648,10 +671,51 @@ Singleton {
                 property int peripheralLow: 20
                 property int peripheralCritical: 5
                 property bool peripheralNotify: true
+                property bool peripheralFullNotify: true
             }
 
             property JsonObject calendar: JsonObject {
                 property string locale: "en-GB"
+            }
+
+            property JsonObject cheatsheet: JsonObject {
+                // Symbol shown for the Super key. Empty = default Material icon.
+                // Nerd Font glyphs work here (e.g. 󰖳  󰌽  󰣇 ⌘)
+                property string superKey: ""
+                // "window" = centered rounded window, "fullscreen" = covers the whole screen
+                property string displayMode: "window"
+                property bool useMacSymbol: false
+                property bool splitButtons: false
+                property bool useMouseSymbol: false
+                property bool useFnSymbol: false
+                property JsonObject fontSize: JsonObject {
+                    property int key: 12
+                    property int comment: 12
+                }
+                // "AI usage" tab: each provider is opt-in, because it reads the local
+                // app login (Claude Code / Codex) and queries the provider's servers
+                property JsonObject aiUsage: JsonObject {
+                    property bool claude: false
+                    property bool chatgpt: false
+                }
+            }
+
+            // Gamepad shortcut: a controller button runs a shell action (services/Gamepad.qml)
+            property JsonObject gamepad: JsonObject {
+                property bool enable: false
+                // evdev button name; BTN_MODE = Xbox/PS "home" button
+                property string button: "BTN_MODE"
+                // Any GlobalStates.hotCornerOptions value; overlayOpen = same as Super + G
+                property string action: "overlayOpen"
+                // Move around the widget overlay (Super + G) with the d-pad / stick while it's open
+                property bool navigateOverlay: true
+                // Pause the focused game while the overlay is open, per controller type:
+                // Xbox (and other standard pads, already blocked by the grab) and
+                // PlayStation / Nintendo pads (which games may read directly via hidraw)
+                property bool pauseGameXbox: false
+                property bool pauseGameDirect: true
+                // DualSense light bar: "default" (leave it), "theme" (wallpaper colour), "off"
+                property string lightMode: "default"
             }
 
             property JsonObject conflictKiller: JsonObject {
@@ -662,37 +726,6 @@ Singleton {
             property JsonObject crosshair: JsonObject {
                 // Valorant crosshair format. Use https://www.vcrdb.net/builder
                 property string code: "0;P;d;1;0l;10;0o;2;1b;0"
-            }
-
-            property JsonObject dock: JsonObject {
-                property bool enable: false
-                property bool showBackground: true
-                property string style: "float" // float | hug
-                property string position: "bottom" // bottom | left | right
-                property bool showBorder: true
-                property real borderWidth: 1
-                property string borderColor: "layer0Border"
-                property string backgroundColor: "layer0"
-                property real radius: 23
-                property bool followFrameColor: false
-                property bool showPreviews: true
-                property bool showTooltips: true // App name on hover; shown in the preview header when previews open
-                property bool scrollToCycleWindows: false // Scroll on an app icon to focus its next/previous window
-                property real iconSize: 33
-                property real iconSpacing: 0
-                property bool showPinButton: true
-                property bool showAppsButton: true
-                property bool showMedia: true
-                property bool monochromeIcons: true
-                property real height: 60
-                property real magnification: 1.2
-                property bool magnify: false
-                property real hoverRegionHeight: 2
-                property bool pinnedOnStartup: false
-                property bool hoverToReveal: true // When false, only reveals on empty workspace
-                property list<string> pinnedApps: [ // IDs of pinned entries
-                    "org.kde.dolphin", "kitty",]
-                property list<string> ignoredAppRegexes: []
             }
 
             property JsonObject interactions: JsonObject {
@@ -726,11 +759,6 @@ Singleton {
 
             property JsonObject language: JsonObject {
                 property string ui: "auto" // UI language. "auto" for system locale, or specific language code like "zh_CN", "en_US"
-                property JsonObject translator: JsonObject {
-                    property string engine: "auto" // Run `trans -list-engines` for available engines. auto should use google
-                    property string targetLanguage: "auto" // Run `trans -list-all` for available languages
-                    property string sourceLanguage: "auto"
-                }
             }
 
             property JsonObject launcher: JsonObject {
@@ -740,6 +768,9 @@ Singleton {
             property JsonObject light: JsonObject {
                 property JsonObject night: JsonObject {
                     property bool automatic: true
+                    // State when the PC boots / the shell restarts:
+                    // "off" = always off, "on" = always on, "schedule" = follow the automatic schedule
+                    property string startup: "off"
                     property string from: "19:00" // Format: "HH:mm", 24-hour time
                     property string to: "06:30"   // Format: "HH:mm", 24-hour time
                     property int colorTemperature: 5000
@@ -773,6 +804,8 @@ Singleton {
             property JsonObject media: JsonObject {
                 // Attempt to remove dupes (the aggregator playerctl one and browsers' native ones when there's plasma browser integration)
                 property bool filterDuplicatePlayers: true
+                // Replace tiny player thumbnails (YouTube Music / Pear Desktop, browsers) with HD album art
+                property bool hdCovers: true
             }
 
             property JsonObject networking: JsonObject {
@@ -849,17 +882,13 @@ Singleton {
                 property bool filterPassive: true
             }
 
-            property JsonObject musicRecognition: JsonObject {
-                property int timeout: 16
-                property int interval: 4
-            }
-
             property JsonObject search: JsonObject {
                 property int nonAppResultDelay: 30 // This prevents lagging when typing
                 property string engineBaseUrl: "https://www.google.com/search?q="
                 property list<string> excludedSites: ["quora.com", "facebook.com"]
                 property list<var> clipboardPins: []
                 property bool clipboardPreviewPopup: false
+                property bool saveClipboardHistory: true // false = nothing you copy is stored (Services > Search)
                 property bool sloppy: false // Uses levenshtein distance based scoring instead of fuzzy sort. Very weird.
                 property JsonObject prefix: JsonObject {
                     property bool showDefaultActionsWithoutPrefix: true
@@ -867,15 +896,11 @@ Singleton {
                     property string app: ">"
                     property string clipboard: ";"
                     property string emojis: ":"
-                    property string keybinds: "<"
                     property string symbols: "."
                     property string math: "="
                     property string shellCommand: "$"
                     property string webSearch: "?"
-                }
-                property JsonObject imageSearch: JsonObject {
-                    property string imageSearchEngineBaseUrl: "https://lens.google.com/uploadbyurl?url="
-                    property bool useCircleSelection: false
+                    property string duckAi: "duck " // launcher: "duck <question>" asks Duck.ai
                 }
             }
 
@@ -890,23 +915,6 @@ Singleton {
                 property bool keepRightSidebarLoaded: true
                 property string leftLastPage: "home"
                 property bool leftRememberPage: true
-                property JsonObject translator: JsonObject {
-                    property bool enable: false
-                    property int delay: 300 // Delay before sending request. Reduces (potential) rate limits and lag.
-                }
-                property JsonObject football: JsonObject {
-                    property bool enable: false
-                    property int legs: 4
-                    property list<string> markets: ["result", "goals", "corners"]
-                    property bool alerts: false
-                    property string alertsScope: "parlay"
-                    property bool goalSound: false
-                    property string goalSoundPath: ""
-                    property bool cornerSound: false
-                    property string cornerSoundPath: ""
-                    property int soundVolume: 100
-                    property bool notify: true
-                }
                 property JsonObject media: JsonObject {
                     property bool enable: true
                     property bool artColors: false
@@ -995,12 +1003,19 @@ Singleton {
                 property string dateWithYearFormat: "dd/MM/yyyy"
                 property string dateFormat: "ddd, dd/MM"
                 property JsonObject pomodoro: JsonObject {
+                    property string style: "dial" // Options: "dial", "digital"
                     property int breakTime: 300
                     property int cyclesBeforeLongBreak: 4
                     property int focus: 1500
                     property int longBreak: 900
                 }
                 property bool secondPrecision: false
+            }
+
+            property JsonObject webapps: JsonObject {
+                property string browser: "" // command name (e.g. "brave"); "" = first installed Chromium-based browser
+                property bool isolated: true // own browser profile per webapp (separate logins/cookies)
+                property string quickWebapp: "" // webapp id for the quick window (Super+Shift+D); "" = Duck.ai
             }
 
             property JsonObject updates: JsonObject {
@@ -1028,6 +1043,13 @@ Singleton {
                 property string wallhavenOrder: "desc"
                 property string wallhavenRatios: ""
                 property string wallhavenColors: ""
+                property bool workshopMature: false // Wallpaper Engine Workshop: show Questionable/Mature items (off = Everyone only)
+                property string workshopMode: "online" // "online" | "library"
+                property string workshopSort: "trend" // trend | recent | popular | updated
+                property int workshopDays: 7 // trend window in days
+                property string workshopTag: "" // genre tag, e.g. Anime
+                property string workshopKind: "video" // online type: video | scene | all
+                property bool workshopSteamDownload: false // opt-in: download through the Steam client (Steamworks API, scripts/workshop/steam_download.py)
                 property string wallhavenQuery: ""
                 property string wallhavenTopRange: "1y"
             }

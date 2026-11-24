@@ -10,16 +10,16 @@ RippleButton {
     property bool showPing: false
     property bool vertical: Config.options.bar.vertical
     property bool aiChatEnabled: Config.options.policies.ai !== 0
-    property bool translatorEnabled: Config.options.sidebar.translator.enable
+    property bool mediaEnabled: Config.options.sidebar.media.enable
     property bool animeEnabled: Config.options.policies.weeb !== 0
-    property bool isMaterial: Config.options.bar.cornerStyle === 3 || Config.options.bar.cornerStyle === 4
+    property bool isMaterial: Appearance.barMaterialLook
     property real buttonPadding: 5
     readonly property color iconColor: {
         const name = Config.options.custom.iconColor || "onLayer0"
         return Appearance.colors[`col${name.charAt(0).toUpperCase()}${name.slice(1)}`] ?? Appearance.colors.colOnLayer0
     }
 
-    visible: aiChatEnabled || translatorEnabled || animeEnabled
+    visible: aiChatEnabled || mediaEnabled || animeEnabled
 
     implicitWidth: 32
     implicitHeight: 32

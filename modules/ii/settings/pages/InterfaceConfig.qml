@@ -136,12 +136,6 @@ ContentPage {
                     enabled: Config.options.appearance.transparency.enable
                     onCheckedChanged: { Config.options.appearance.transparency.automatic = checked }
                 }
-                ConfigSwitch {
-                    buttonIcon: "water_drop"
-                    text: Translation.tr("Glassy UI")
-                    checked: Config.options.background.widgets.glass.enable
-                    onCheckedChanged: { Config.options.background.widgets.glass.enable = checked }
-                }
                 ConfigSlider {
                     buttonIcon: "layers"
                     text: Translation.tr("Background")
@@ -181,21 +175,7 @@ ContentPage {
                     onSelected: newValue => { Config.options.settings.style = newValue }
                     options: [
                         { displayName: Translation.tr("Default"), icon: "settings_panorama", value: "default" },
-                        { displayName: Translation.tr("Minimal"), icon: "settings_heart", value: "minimal" },
-                        { displayName: Translation.tr("Dashboard"), icon: "dashboard", value: "dashboard" }
-                    ]
-                }
-                ConfigSelectionArray {
-                    enabled: Config.options.settings.style === "dashboard"
-                    text: Translation.tr("Dashboard animation speed")
-                    icon: "speed"
-                    currentValue: Config.options.settings.animationSpeed
-                    onSelected: newValue => { Config.options.settings.animationSpeed = newValue }
-                    options: [
-                        { displayName: "1x", icon: "slow_motion_video", value: 1 },
-                        { displayName: "1.5x", icon: "play_arrow", value: 1.5 },
-                        { displayName: "2x", icon: "fast_forward", value: 2 },
-                        { displayName: "3x", icon: "bolt", value: 3 }
+                        { displayName: Translation.tr("Minimal"), icon: "settings_heart", value: "minimal" }
                     ]
                 }
                 ConfigSpinBox {
@@ -304,11 +284,11 @@ ContentPage {
                             ConfigSelectionArray {
                                 Layout.fillWidth: false
                                 Layout.alignment: Qt.AlignRight
-                                currentValue: Config.options.policies.ai
+                                // Online AI was removed: any non-zero value means "local only"
+                                currentValue: Config.options.policies.ai === 0 ? 0 : 2
                                 onSelected: newValue => { Config.options.policies.ai = newValue }
                                 options: [
                                     { displayName: Translation.tr("No"), icon: "close", value: 0 },
-                                    { displayName: Translation.tr("Yes"), icon: "check", value: 1 },
                                     { displayName: Translation.tr("Local"), icon: "sync_saved_locally", value: 2 }
                                 ]
                             }
@@ -350,38 +330,6 @@ ContentPage {
                                     { displayName: Translation.tr("Closet"), icon: "ev_shadow", value: 2 }
                                 ]
                             }
-                        }
-                    }
-                }
-            }
-
-            Rectangle {
-                Layout.fillWidth: true
-                Layout.topMargin: 4
-                implicitHeight: translatorCol.implicitHeight + 24
-                radius: Appearance.rounding.normal
-                color: Appearance.colors.colLayer1
-                border.width: 1
-                border.color: "transparent"
-
-                ColumnLayout {
-                    id: translatorCol
-                    anchors { fill: parent; margins: 12 }
-                    spacing: 8
-
-                    RowLayout {
-                        spacing: 8
-                        ConfigSwitch {
-                            buttonIcon: "translate"
-                            text: Translation.tr("Enable Translator")
-                            checked: Config.options.sidebar.translator.enable
-                            onCheckedChanged: { Config.options.sidebar.translator.enable = checked }
-                        }
-                        ConfigSwitch {
-                            buttonIcon: "sports_soccer"
-                            text: Translation.tr("Football")
-                            checked: Config.options.sidebar.football.enable
-                            onCheckedChanged: { Config.options.sidebar.football.enable = checked }
                         }
                     }
                 }
@@ -750,197 +698,146 @@ ContentPage {
         }
 
         ContentSection {
-            icon: "call_to_action"
-            title: Translation.tr("Dock")
-            shape: MaterialShape.Shape.Cookie6Sided
-
-            GroupedList {
-                ConfigSwitch {
-                    buttonIcon: "check"
-                    text: Translation.tr("Enable")
-                    checked: Config.options.dock.enable
-                    onCheckedChanged: { Config.options.dock.enable = checked }
-                }
-                ConfigSwitch {
-                    buttonIcon: "background_dot_small"
-                    text: Translation.tr("Background")
-                    checked: Config.options.dock.showBackground
-                    onCheckedChanged: { Config.options.dock.showBackground = checked }
-                }
-                ConfigSwitch {
-                    buttonIcon: "highlight_mouse_cursor"
-                    text: Translation.tr("Hover to reveal")
-                    checked: Config.options.dock.hoverToReveal
-                    onCheckedChanged: { Config.options.dock.hoverToReveal = checked }
-                }
-                ConfigSwitch {
-                    buttonIcon: "push_pin"
-                    text: Translation.tr("Pinned on startup")
-                    checked: Config.options.dock.pinnedOnStartup
-                    onCheckedChanged: { Config.options.dock.pinnedOnStartup = checked }
-                }
-            }
+            icon: "keyboard"
+            title: Translation.tr("Cheat sheet")
+            shape: MaterialShape.Shape.Cookie4Sided
 
             ContentSubsection {
-                title: Translation.tr("Appearance")
+                title: Translation.tr("Display mode")
+                tooltip: Translation.tr("How the keybind cheat sheet (Super + /) opens")
                 GroupedList {
                     ConfigSelectionArray {
-                        text: Translation.tr("Style")
-                        icon: "dock_to_bottom"
-                        currentValue: Config.options.dock.style
-                        onSelected: newValue => { Config.options.dock.style = newValue }
+                        currentValue: Config.options.cheatsheet.displayMode
+                        onSelected: newValue => { Config.options.cheatsheet.displayMode = newValue }
                         options: [
-                            { displayName: Translation.tr("Float"), icon: "call_to_action", value: "float" },
-                            { displayName: Translation.tr("Hug"), icon: "dock_to_bottom", value: "hug" }
+                            { "displayName": Translation.tr("Window"), "icon": "web_asset", "value": "window" },
+                            { "displayName": Translation.tr("Fullscreen"), "icon": "fullscreen", "value": "fullscreen" }
                         ]
                     }
+                }
+            }
+
+            ContentSubsection {
+                title: Translation.tr("AI usage tab")
+                tooltip: Translation.tr("Plan limits shown in the AI usage tab of the cheat sheet (Super + /) and in the bar's AI Usage widget.\nEach one reads the login of the app on this PC and asks the provider's servers for your usage.\nNothing is sent anywhere else, and the login is never changed or renewed.")
+                GroupedList {
                     ConfigSwitch {
-                        buttonIcon: "zoom_in"
-                        text: Translation.tr("Magnification")
-                        checked: Config.options.dock.magnify
-                        onCheckedChanged: { Config.options.dock.magnify = checked }
+                        buttonIcon: "token"
+                        text: Translation.tr("Claude usage (reads the Claude Code login)")
+                        checked: Config.options.cheatsheet.aiUsage.claude
+                        onCheckedChanged: { Config.options.cheatsheet.aiUsage.claude = checked }
+                        StyledToolTip {
+                            text: Translation.tr("Reads ~/.claude/.credentials.json and queries api.anthropic.com")
+                        }
                     }
-                    ConfigSpinBox {
-                        visible: Config.options.dock.magnify
-                        icon: "zoom_out_map"
-                        text: Translation.tr("Magnification amount (%)")
-                        value: Config.options.dock.magnification * 100
-                        from: 110
-                        to: 220
-                        stepSize: 10
-                        onValueChanged: { Config.options.dock.magnification = value / 100 }
+                    ConfigSwitch {
+                        buttonIcon: "token"
+                        text: Translation.tr("ChatGPT usage (reads the Codex login)")
+                        checked: Config.options.cheatsheet.aiUsage.chatgpt
+                        onCheckedChanged: { Config.options.cheatsheet.aiUsage.chatgpt = checked }
+                        StyledToolTip {
+                            text: Translation.tr("Reads ~/.codex/auth.json and queries chatgpt.com")
+                        }
                     }
+                }
+            }
+
+            ContentSubsection {
+                title: Translation.tr("Super key symbol")
+                tooltip: Translation.tr("Shown in place of Super in the keybind cheat sheet (Super + /).\nYou can also edit cheatsheet.superKey in the config file")
+                GroupedList {
                     ConfigSelectionArray {
-                        text: Translation.tr("Position")
-                        icon: "dock_to_bottom"
-                        currentValue: Config.options.dock.position
-                        onSelected: newValue => { Config.options.dock.position = newValue }
+                        currentValue: Config.options.cheatsheet.superKey
+                        onSelected: newValue => { Config.options.cheatsheet.superKey = newValue }
+                        // Nerd Font glyphs; the first option keeps the default icon
                         options: [
-                            { displayName: Translation.tr("Left"), icon: "dock_to_left", value: "left" },
-                            { displayName: Translation.tr("Bottom"), icon: "dock_to_bottom", value: "bottom" },
-                            { displayName: Translation.tr("Right"), icon: "dock_to_right", value: "right" }
+                            { "displayName": Translation.tr("Default"), "icon": "keyboard_command_key", "value": "" },
+                            { "displayName": "󰖳", "value": "󰖳" },
+                            { "displayName": "", "value": "" },
+                            { "displayName": "󰨡", "value": "󰨡" },
+                            { "displayName": "", "value": "" },
+                            { "displayName": "󰌽", "value": "󰌽" },
+                            { "displayName": "󰣇", "value": "󰣇" },
+                            { "displayName": "", "value": "" },
+                            { "displayName": "", "value": "" },
+                            { "displayName": "", "value": "" },
+                            { "displayName": "", "value": "" },
+                            { "displayName": "", "value": "" },
+                            { "displayName": "󱄛", "value": "󱄛" },
+                            { "displayName": "", "value": "" },
+                            { "displayName": "", "value": "" },
+                            { "displayName": "", "value": "" },
+                            { "displayName": "⌘", "value": "⌘" },
+                            { "displayName": "󰀲", "value": "󰀲" },
+                            { "displayName": "󰟍", "value": "󰟍" },
+                            { "displayName": "", "value": "" }
                         ]
                     }
-                    ConfigSpinBox {
-                        icon: "rounded_corner"
-                        text: Translation.tr("Corner radius")
-                        value: Config.options.dock.radius
-                        from: 0
-                        to: 40
-                        stepSize: 1
-                        onValueChanged: { Config.options.dock.radius = value }
-                    }
-                    ColorSelectionArray {
-                        icon: "format_paint"
-                        text: Translation.tr("Background color")
-                        options: ["layer0", "layer1", "primaryContainer", "secondaryContainer", "tertiaryContainer", "primary", "secondary", "tertiary"]
-                        currentValue: Config.options.dock.backgroundColor
-                        onSelected: newValue => { Config.options.dock.backgroundColor = newValue }
-                    }
-                    ConfigSwitch {
-                        enabled: Config.options.dock.style === "hug"
-                        buttonIcon: "filter_frames"
-                        text: Translation.tr("Follow frame color")
-                        checked: Config.options.dock.followFrameColor
-                        onCheckedChanged: { Config.options.dock.followFrameColor = checked }
-                    }
-                    ConfigSwitch {
-                        enabled: Config.options.dock.style !== "hug"
-                        buttonIcon: "border_style"
-                        text: Translation.tr("Border")
-                        checked: Config.options.dock.showBorder
-                        onCheckedChanged: { Config.options.dock.showBorder = checked }
-                    }
-                    ConfigSpinBox {
-                        enabled: Config.options.dock.showBorder && Config.options.dock.style !== "hug"
-                        icon: "line_weight"
-                        text: Translation.tr("Border width")
-                        value: Config.options.dock.borderWidth
-                        from: 1
-                        to: 10
-                        stepSize: 1
-                        onValueChanged: { Config.options.dock.borderWidth = value }
-                    }
-                    ColorSelectionArray {
-                        enabled: Config.options.dock.showBorder && Config.options.dock.style !== "hug"
-                        icon: "format_paint"
-                        text: Translation.tr("Border color")
-                        options: ["layer0Border", "primary", "secondary", "tertiary", "primaryContainer", "secondaryContainer", "tertiaryContainer", "layer1"]
-                        currentValue: Config.options.dock.borderColor
-                        onSelected: newValue => { Config.options.dock.borderColor = newValue }
-                    }
                 }
             }
 
-
             ContentSubsection {
-                title: Translation.tr("Icons")
+                title: Translation.tr("Keys")
                 GroupedList {
                     ConfigSwitch {
-                        buttonIcon: "preview"
-                        text: Translation.tr("Window previews")
-                        checked: Config.options.dock.showPreviews
-                        onCheckedChanged: { Config.options.dock.showPreviews = checked }
+                        buttonIcon: "keyboard_option_key"
+                        text: Translation.tr("Use macOS-like symbols for mod keys")
+                        checked: Config.options.cheatsheet.useMacSymbol
+                        onCheckedChanged: { Config.options.cheatsheet.useMacSymbol = checked }
+                        StyledToolTip {
+                            text: Translation.tr("e.g. 󰘴 for Ctrl, 󰘵 for Alt, 󰘶 for Shift")
+                        }
                     }
                     ConfigSwitch {
-                        buttonIcon: "tooltip"
-                        text: Translation.tr("App name tooltips")
-                        checked: Config.options.dock.showTooltips
-                        onCheckedChanged: { Config.options.dock.showTooltips = checked }
+                        buttonIcon: "function"
+                        text: Translation.tr("Use symbols for function keys")
+                        checked: Config.options.cheatsheet.useFnSymbol
+                        onCheckedChanged: { Config.options.cheatsheet.useFnSymbol = checked }
+                        StyledToolTip {
+                            text: Translation.tr("e.g. 󱊫 for F1, 󱊶 for F12")
+                        }
                     }
                     ConfigSwitch {
-                        buttonIcon: "swap_vert"
-                        text: Translation.tr("Scroll to switch windows")
-                        checked: Config.options.dock.scrollToCycleWindows
-                        onCheckedChanged: { Config.options.dock.scrollToCycleWindows = checked }
+                        buttonIcon: "mouse"
+                        text: Translation.tr("Use symbols for mouse")
+                        checked: Config.options.cheatsheet.useMouseSymbol
+                        onCheckedChanged: { Config.options.cheatsheet.useMouseSymbol = checked }
+                        StyledToolTip {
+                            text: Translation.tr("e.g. L󰍽 for left click, R󰍽 for right click, 󱕒 for scroll")
+                        }
                     }
-                    ConfigSpinBox {
-                        icon: "photo_size_select_large"
-                        text: Translation.tr("Icon size")
-                        value: Config.options.dock.iconSize
-                        from: 20
-                        to: 48
-                        stepSize: 1
-                        onValueChanged: { Config.options.dock.iconSize = value }
-                    }
-                    ConfigSpinBox {
-                        icon: "space_bar"
-                        text: Translation.tr("Icon spacing")
-                        value: Config.options.dock.iconSpacing
-                        from: 0
-                        to: 12
-                        stepSize: 1
-                        onValueChanged: { Config.options.dock.iconSpacing = value }
+                    ConfigSwitch {
+                        buttonIcon: "highlight_keyboard_focus"
+                        text: Translation.tr("Split buttons")
+                        checked: Config.options.cheatsheet.splitButtons
+                        onCheckedChanged: { Config.options.cheatsheet.splitButtons = checked }
+                        StyledToolTip {
+                            text: Translation.tr("One keycap per key with \"+\" between them, instead of a single pill")
+                        }
                     }
                 }
             }
 
             ContentSubsection {
-                title: Translation.tr("Buttons & Media")
+                title: Translation.tr("Font size")
                 GroupedList {
-                    ConfigSwitch {
-                        buttonIcon: "music_note"
-                        text: Translation.tr("Media Player")
-                        checked: Config.options.dock.showMedia
-                        onCheckedChanged: { Config.options.dock.showMedia = checked }
+                    ConfigSpinBox {
+                        icon: "keyboard_keys"
+                        text: Translation.tr("Keybind font size")
+                        value: Config.options.cheatsheet.fontSize.key
+                        from: 8
+                        to: 30
+                        stepSize: 1
+                        onValueChanged: { Config.options.cheatsheet.fontSize.key = value }
                     }
-                    ConfigSwitch {
-                        buttonIcon: "keep"
-                        text: Translation.tr("Show Pin Button")
-                        checked: Config.options.dock.showPinButton
-                        onCheckedChanged: { Config.options.dock.showPinButton = checked }
-                    }
-                    ConfigSwitch {
-                        buttonIcon: "apps"
-                        text: Translation.tr("Show Apps Button")
-                        checked: Config.options.dock.showAppsButton
-                        onCheckedChanged: { Config.options.dock.showAppsButton = checked }
-                    }
-                    ConfigSwitch {
-                        buttonIcon: "colors"
-                        text: Translation.tr("Tint app icons")
-                        checked: Config.options.dock.monochromeIcons
-                        onCheckedChanged: { Config.options.dock.monochromeIcons = checked }
+                    ConfigSpinBox {
+                        icon: "text_fields"
+                        text: Translation.tr("Description font size")
+                        value: Config.options.cheatsheet.fontSize.comment
+                        from: 8
+                        to: 30
+                        stepSize: 1
+                        onValueChanged: { Config.options.cheatsheet.fontSize.comment = value }
                     }
                 }
             }
@@ -1172,7 +1069,7 @@ ContentPage {
         ContentSection {
             icon: "screenshot_frame_2"
             shape: MaterialShape.Shape.PuffyDiamond
-            title: Translation.tr("Region selector (screen snipping/Google Lens)")
+            title: Translation.tr("Region selector")
 
             ContentSubsection {
                 title: Translation.tr("Hint target regions")
@@ -1200,25 +1097,6 @@ ContentPage {
                         onCheckedChanged: {
                             Config.options.regionSelector.targetRegions.content = checked;
                         }
-                    }
-                }
-            }
-
-            ContentSubsection {
-                title: Translation.tr("Google Lens")
-                    
-                GroupedList {
-                    ConfigSelectionArray {
-                        text: Translation.tr("Selection Type")
-                        icon: "ink_selection"
-                        currentValue: Config.options.search.imageSearch.useCircleSelection ? "circle" : "rectangles"
-                        onSelected: newValue => {
-                            Config.options.search.imageSearch.useCircleSelection = (newValue === "circle");
-                        }
-                        options: [
-                            { icon: "activity_zone", value: "rectangles", displayName: Translation.tr("Rectangular selection") },
-                            { icon: "gesture", value: "circle", displayName: Translation.tr("Circle to Search") }
-                        ]
                     }
                 }
             }
@@ -1405,6 +1283,15 @@ ContentPage {
                         }
                     }
                 } 
+                ConfigSwitch {
+                    Layout.fillWidth: true
+                    buttonIcon: "cloud_download"
+                    text: Translation.tr("Steam Workshop: download through Steam (Download all button)")
+                    checked: Config.options.wallpaperSelector.workshopSteamDownload
+                    onClicked: {
+                        Config.options.wallpaperSelector.workshopSteamDownload = !Config.options.wallpaperSelector.workshopSteamDownload;
+                    }
+                }
             }
         }
 
@@ -1517,12 +1404,6 @@ ContentPage {
                     text: Translation.tr("Terminal")
                     checked: Config.options.appearance.wallpaperTheming.enableTerminal
                     onCheckedChanged: { Config.options.appearance.wallpaperTheming.enableTerminal = checked }
-                }
-                ConfigSwitch {
-                    buttonIcon: "lock"
-                    text: Translation.tr("Keep Konsole color scheme")
-                    checked: Config.options.appearance.wallpaperTheming.lockKonsoleColors
-                    onCheckedChanged: { Config.options.appearance.wallpaperTheming.lockKonsoleColors = checked }
                 }
                 ConfigRow {
                     uniform: true

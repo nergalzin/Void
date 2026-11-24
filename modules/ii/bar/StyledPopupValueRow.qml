@@ -21,7 +21,9 @@ RowLayout {
     }
     StyledText {
         Layout.fillWidth: true
+        Layout.minimumWidth: 0
         horizontalAlignment: Text.AlignRight
+        elide: Text.ElideRight
         visible: root.value !== ""
         color: Appearance.colors.colOnSurfaceVariant
         text: root.value

@@ -12,17 +12,13 @@ Item {
     property int sidebarPadding: 10
     anchors.fill: parent
     property bool aiChatEnabled: Config.options.policies.ai !== 0
-    property bool translatorEnabled: Config.options.sidebar.translator.enable
     property bool animeEnabled: Config.options.policies.weeb !== 0
     property bool animeCloset: Config.options.policies.weeb === 2
     property bool mediaEnabled: Config.options.sidebar.media.enable
-    property bool footballEnabled: Config.options.sidebar.football.enable
 
     readonly property var featurePages: [
         ...(root.aiChatEnabled ? [{"key": "ai", "icon": "neurology", "name": Translation.tr("Intelligence")}] : []),
-        ...(root.translatorEnabled ? [{"key": "translator", "icon": "translate", "name": Translation.tr("Translator")}] : []),
         ...(root.mediaEnabled ? [{"key": "media", "icon": "music_note", "name": Translation.tr("Media")}] : []),
-        ...(root.footballEnabled ? [{"key": "sports", "icon": "sports", "name": Translation.tr("Sports")}] : []),
         ...((root.animeEnabled && !root.animeCloset) ? [{"key": "anime", "icon": "bookmark_heart", "name": Translation.tr("Anime")}] : [])
     ]
     readonly property var pageKeys: ["home", ...root.featurePages.map(page => page.key)]
@@ -30,12 +26,9 @@ Item {
     readonly property int currentIndex: Math.max(0, root.pageKeys.indexOf(root.currentKey))
     readonly property var currentPage: root.featurePages.find(page => page.key === root.currentKey) ?? null
     property bool restored: false
-    property int direction: 1
-    readonly property bool glassPage: ["media", "sports", "ai", "anime", "translator"].includes(root.currentKey)
 
     function goTo(key) {
         if (root.pageKeys.indexOf(key) < 0) key = "home"
-        root.direction = root.pageKeys.indexOf(key) >= root.currentIndex ? 1 : -1
         root.currentKey = key
         if (Config.options.sidebar.leftRememberPage) Config.options.sidebar.leftLastPage = key
     }
@@ -140,17 +133,10 @@ Item {
         }
 
         ClippingRectangle {
-            id: pagesBox
             Layout.fillWidth: true
             Layout.fillHeight: true
             radius: Appearance.rounding.normal
-            color: root.glassPage && Config.options.background.widgets.glass.enable ? "transparent" : Appearance.colors.colLayer1
-
-            WindowGlass {
-                anchors.fill: parent
-                glassEnabled: root.currentKey === "sports" || root.currentKey === "ai" || root.currentKey === "anime" || root.currentKey === "translator"
-                cardRadius: pagesBox.radius
-            }
+            color: Appearance.colors.colLayer1
 
             Item { // Content pages
                 id: pageStack
@@ -171,9 +157,8 @@ Item {
                     active: current
                     visible: current || lingering
                     minScale: isHome ? 1 : 0.97
-                    travelX: isHome ? 0 : root.direction * slot.width * 0.35
-                    exitX: -travelX
-                    travelY: 0
+                    travelX: 0
+                    travelY: isHome ? 0 : 20
                     fade: !isHome
                     animIndex: 0
                     smooth: !isHome
@@ -206,9 +191,7 @@ Item {
 
                 PageSlot { pageKey: "home"; page: home }
                 PageSlot { pageKey: "ai"; enabledPage: root.aiChatEnabled; page: aiChat }
-                PageSlot { pageKey: "translator"; enabledPage: root.translatorEnabled; page: translator }
                 PageSlot { pageKey: "media"; enabledPage: root.mediaEnabled; page: media }
-                PageSlot { pageKey: "sports"; enabledPage: root.footballEnabled; page: football }
                 PageSlot { pageKey: "anime"; enabledPage: root.animeEnabled && !root.animeCloset; page: anime }
             }
         }
@@ -225,16 +208,8 @@ Item {
             AiChat {}
         }
         Component {
-            id: translator
-            Translator {}
-        }
-        Component {
             id: media
             SidebarPlayerControl {}
-        }
-        Component {
-            id: football
-            FootballPage {}
         }
         Component {
             id: anime

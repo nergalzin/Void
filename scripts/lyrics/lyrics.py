@@ -1,121 +1,329 @@
 #!/usr/bin/env python3
-import sys
-import urllib.request
-import urllib.parse
+"""Fetch time-synced lyrics from lrclib.net.
+
+Usage: lyrics.py TITLE ARTIST DURATION_SECONDS [ALBUM] [--refresh]
+Prints "t§text§t§text§...§ok" (synced), "...§plain" (unsynced lyrics with estimated
+times), "not_found" or "no_info". --refresh ignores the cache.
+
+Search strategy (stops at the first synced match):
+  1. exact lookup with every artist variant (full string, then the main artist
+     when the field lists several: "Nile, Karl Sanders" -> "Nile")
+  2. searches by track + artist, then free text
+  3. synced lyrics from BetterLyrics/Boidu (TTML) when lrclib has none
+Among the results, the synced version whose length is closest to the playing
+track wins, so the lines line up with the version that is actually playing.
+When no synced version exists, plain lyrics are returned instead, spread evenly over
+the track so they scroll along. Results (including "not found") are cached on disk.
+"""
+import hashlib
 import json
+import os
 import re
+import sys
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
 import xml.etree.ElementTree as ET
 
-def _parse_lrc(lrc_text: str) -> list:
+API = "https://lrclib.net/api"
+BOIDU_BASES = ["https://api.betterlyrics.org", "https://lyrics-api.boidu.dev"]
+UA = "Void lyrics (https://github.com/nergalzin/Void)"
+CACHE_DIR = os.path.join(os.environ.get("XDG_CACHE_HOME", os.path.expanduser("~/.cache")),
+                         "quickshell", "lyrics")
+NOT_FOUND_TTL = 3 * 24 * 3600  # retry songs without lyrics after a few days
+MAX_DURATION_DIFF = 12          # seconds; beyond this it's probably another version
+
+ARTIST_SPLIT = re.compile(r"\s*(?:,|;|&| / | x | feat\.? | ft\.? | featuring | with )\s*", re.I)
+TITLE_NOISE = [
+    re.compile(r"\s*[\(\[](?:feat|ft)\.?\s[^\)\]]*[\)\]]", re.I),
+    re.compile(r"\s*[\(\[][^\)\]]*(?:official|video|audio|lyric|visuali[sz]er|remaster|live|explicit|clean|hd|hq|4k|mv)[^\)\]]*[\)\]]", re.I),
+    re.compile(r"\s+-\s+(?:\d{4}\s+)?remaster(?:ed)?(?:\s+\d{4})?(?:\s+version)?$", re.I),
+    re.compile(r"\s+(?:feat|ft)\.?\s.*$", re.I),
+    re.compile(r"\s*\|.*$"),
+]
+TAG = re.compile(r"\[(\d+):(\d+(?:[.:]\d+)?)\]")
+OFFSET = re.compile(r"\[offset:\s*([+-]?\d+)\]", re.I)
+
+
+def norm(s: str) -> str:
+    s = s.lower()
+    s = re.sub(r"[\(\[].*?[\)\]]", " ", s)
+    s = re.sub(r"[^\w\s]", " ", s)
+    return " ".join(s.split())
+
+
+def clean_title(title: str) -> str:
+    t = title
+    for rx in TITLE_NOISE:
+        t = rx.sub("", t)
+    return t.strip() or title.strip()
+
+
+def artist_variants(artist: str) -> list:
+    out = []
+    for a in [artist.strip(), ARTIST_SPLIT.split(artist.strip())[0]]:
+        if a and a.lower() not in [x.lower() for x in out]:
+            out.append(a)
+    return out
+
+
+def parse_lrc(text: str) -> list:
+    offset = 0.0
+    m = OFFSET.search(text)
+    if m:
+        offset = int(m.group(1)) / 1000.0
     lines = []
-    for raw in lrc_text.splitlines():
-        raw = raw.strip()
-        if not raw:
+    for raw in text.splitlines():
+        tags = TAG.findall(raw)
+        if not tags:
             continue
-        try:
-            tag_end = raw.index("]")
-            time_str = raw[1:tag_end]
-            text = raw[tag_end + 1:].strip()
-            mins, secs = time_str.split(":")
-            timestamp = int(mins) * 60 + float(secs)
-            lines.append({"time": timestamp, "text": text})
-        except Exception:
-            continue
-    return sorted(lines, key=lambda x: x["time"])
+        words = TAG.sub("", raw).strip()
+        for mins, secs in tags:
+            t = int(mins) * 60 + float(secs.replace(":", ".")) - offset
+            lines.append({"time": max(0.0, t), "text": words})
+    lines.sort(key=lambda x: x["time"])
+    return lines
 
-def _is_match(d: dict, title: str, artist: str) -> bool:
-    if not d.get("syncedLyrics"):
+
+def http_json(path: str, params: dict):
+    url = f"{API}/{path}?{urllib.parse.urlencode(params)}"
+    req = urllib.request.Request(url, headers={"User-Agent": UA})
+    for attempt in range(3):
+        try:
+            with urllib.request.urlopen(req, timeout=12) as r:
+                return json.loads(r.read().decode())
+        except urllib.error.HTTPError as e:
+            if e.code == 404:
+                return None
+            if e.code in (429, 500, 502, 503, 504) and attempt < 2:
+                time.sleep(1.5 * (attempt + 1))  # lrclib often answers "server busy"
+                continue
+            return None
+        except Exception:
+            if attempt < 2:
+                time.sleep(1)
+                continue
+            return None
+    return None
+
+
+def matches(d: dict, titles: list, artists: list) -> bool:
+    r_title = norm(d.get("trackName") or "")
+    r_artist = norm(d.get("artistName") or "")
+    if not r_title or not r_artist:
         return False
-    r_title  = (d.get("trackName")  or "").lower()
-    r_artist = (d.get("artistName") or "").lower()
-    t = title.lower()
-    a = artist.lower()
-    title_match = (t in r_title or r_title in t or
-                   any(word in r_title for word in t.split() if len(word) > 3))
-    artist_match = (a in r_artist or r_artist in a or
-                    any(word in r_artist for word in a.split() if len(word) > 3))
-    return title_match and artist_match
+    title_ok = any(t and (t == r_title or t in r_title or r_title in t) for t in titles)
+    artist_ok = any(a and (a in r_artist or r_artist in a) for a in artists)
+    return title_ok and artist_ok
 
-def fetch_lrclib(title: str, artist: str, duration: float) -> list:
-    urls = [
-        f"https://lrclib.net/api/get?track_name={urllib.parse.quote(title)}&artist_name={urllib.parse.quote(artist)}&duration={int(duration)}",
-        f"https://lrclib.net/api/search?track_name={urllib.parse.quote(title)}&artist_name={urllib.parse.quote(artist)}",
-        f"https://lrclib.net/api/search?q={urllib.parse.quote(title + ' ' + artist)}",
-    ]
-    for url in urls:
-        try:
-            with urllib.request.urlopen(url, timeout=15) as r:
-                data = json.loads(r.read().decode())
-            if isinstance(data, list):
-                data = next((d for d in data if _is_match(d, title, artist)), None)
-            if data and _is_match(data, title, artist):
-                lines = _parse_lrc(data["syncedLyrics"])
-                if lines:
-                    return lines
-        except Exception:
+
+def pick(results: list, titles: list, artists: list, duration: float, field: str = "syncedLyrics"):
+    """Result with lyrics in `field` closest in length to the playing track."""
+    best, best_diff = None, 0.0
+    for d in results:
+        if not isinstance(d, dict) or not d.get(field) or not matches(d, titles, artists):
             continue
-    return []
+        diff = abs((d.get("duration") or 0) - duration) if duration > 0 else 0
+        if best is None or diff < best_diff:
+            best, best_diff = d, diff
+    if best is None:
+        return None
+    # Wrong-length versions would be out of sync; only accept them when nothing closer exists
+    # and the track length is unknown. (Plain lyrics have no timing, any version will do.)
+    if field == "syncedLyrics" and duration > 0 and best_diff > MAX_DURATION_DIFF:
+        return None
+    return best
 
-def _ttml_seconds(value: str) -> float:
+
+def spread_plain(text: str, duration: float) -> list:
+    """Give unsynced lyrics estimated times so they scroll along with the song."""
+    words = [l.strip() for l in text.splitlines()]
+    while words and not words[0]:
+        words.pop(0)
+    while words and not words[-1]:
+        words.pop()
+    if not words:
+        return []
+    n = len(words)
+    if duration > 0:
+        start, end = duration * 0.06, duration * 0.94
+        step = (end - start) / max(n, 1)
+    else:
+        start, step = 5.0, 3.5
+    return [{"time": round(start + i * step, 3), "text": w} for i, w in enumerate(words)]
+
+
+def ttml_seconds(value: str) -> float:
     total = 0.0
-    for part in value.replace("s", "").split(":"):
+    for part in value.strip().rstrip("s").split(":"):
         total = total * 60 + float(part)
     return total
 
-def _parse_ttml(ttml: str) -> list:
+
+def parse_ttml(ttml: str) -> list:
     root = ET.fromstring(ttml)
     lines = []
     for p in root.iter():
-        if not p.tag.endswith("}p") and p.tag != "p":
+        if not (p.tag.endswith("}p") or p.tag == "p"):
             continue
         begin = p.get("begin")
         if begin is None:
             continue
         text = re.sub(r"\s+", " ", "".join(p.itertext())).strip()
         try:
-            lines.append({"time": _ttml_seconds(begin), "text": text})
+            lines.append({"time": ttml_seconds(begin), "text": text})
         except ValueError:
             continue
-    return sorted(lines, key=lambda x: x["time"])
+    lines.sort(key=lambda x: x["time"])
+    return lines
 
-BOIDU_BASES = ["https://api.betterlyrics.org", "https://lyrics-api.boidu.dev"]
 
-def fetch_boidu(title: str, artist: str, duration: float) -> list:
-    query = f"/getLyrics?s={urllib.parse.quote(title)}&a={urllib.parse.quote(artist)}"
-    if duration > 0:
-        query += f"&d={int(duration)}"
-    for base in BOIDU_BASES:
-        try:
-            req = urllib.request.Request(base + query, headers={"User-Agent": "Mozilla/5.0"})
-            with urllib.request.urlopen(req, timeout=15) as r:
-                data = json.loads(r.read().decode())
-            lines = _parse_ttml(data.get("ttml") or "")
-            if len(lines) >= 3:
-                return lines
-        except Exception:
-            continue
+def fetch_boidu(titles_raw: list, artists_raw: list, duration: float) -> list:
+    """Synced lines from BetterLyrics/Boidu, or [] when neither has the song."""
+    for t in titles_raw:
+        for a in artists_raw:
+            query = "/getLyrics?" + urllib.parse.urlencode(
+                {"s": t, "a": a, **({"d": int(duration)} if duration > 0 else {})})
+            for base in BOIDU_BASES:
+                try:
+                    req = urllib.request.Request(base + query, headers={"User-Agent": UA})
+                    with urllib.request.urlopen(req, timeout=12) as r:
+                        data = json.loads(r.read().decode())
+                    lines = parse_ttml(data.get("ttml") or "")
+                    if len(lines) >= 3:
+                        return lines
+                except Exception:
+                    continue
     return []
 
-def main():
-    if len(sys.argv) < 4:
-        print("no_info", flush=True)
-        sys.exit(0)
-    title    = sys.argv[1]
-    artist   = sys.argv[2]
-    duration = float(sys.argv[3])
-    if not title or not artist:
-        print("no_info", flush=True)
-        sys.exit(0)
-    lines = fetch_lrclib(title, artist, duration) or fetch_boidu(title, artist, duration)
-    if not lines:
+
+def fetch(title: str, artist: str, duration: float, album: str):
+    """Returns (lines, plain)."""
+    titles_raw = [title.strip()]
+    cleaned = clean_title(title)
+    if cleaned.lower() != title.strip().lower():
+        titles_raw.append(cleaned)
+    # YouTube-style "Artist - Title"
+    if " - " in cleaned:
+        left, right = cleaned.split(" - ", 1)
+        if norm(left) in norm(artist) or norm(artist) in norm(left):
+            titles_raw.append(right.strip())
+    artists_raw = artist_variants(artist)
+    titles = [norm(t) for t in titles_raw]
+    artists = [norm(a) for a in artists_raw]
+
+    # 1. exact lookups (fast path, lrclib matches length within ~2s)
+    exact = []
+    if duration > 0:
+        for t in titles_raw:
+            for a in artists_raw:
+                params = {"track_name": t, "artist_name": a, "duration": int(round(duration))}
+                if album:
+                    params["album_name"] = album
+                d = http_json("get", params)
+                if isinstance(d, dict) and d.get("instrumental") and matches(d, titles, artists):
+                    return [], False
+                if isinstance(d, dict) and pick([d], titles, artists, duration):
+                    return parse_lrc(d["syncedLyrics"]), False
+                if isinstance(d, dict):
+                    exact.append(d)
+
+    # 2. searches; pool every candidate and pick the closest synced version
+    pool = []
+    seen = set()
+    queries = [{"track_name": t, "artist_name": a} for t in titles_raw for a in artists_raw]
+    queries += [{"q": f"{t} {artists_raw[-1]}"} for t in titles_raw]
+    for q in queries:
+        res = http_json("search", q)
+        if isinstance(res, list):
+            for d in res:
+                if d.get("id") not in seen:
+                    seen.add(d.get("id"))
+                    pool.append(d)
+        best = pick(pool, titles, artists, duration)
+        if best:
+            return parse_lrc(best["syncedLyrics"]), False
+
+    # 3. lrclib has no synced version: try BetterLyrics/Boidu before settling for plain text
+    lines = fetch_boidu(titles_raw, artists_raw, duration)
+    if lines:
+        return lines, False
+
+    # 4. no synced version anywhere: fall back to plain lyrics
+    best = pick(exact + pool, titles, artists, duration, "plainLyrics")
+    if best:
+        lines = spread_plain(best["plainLyrics"], duration)
+        if lines:
+            return lines, True
+    return [], False
+
+
+def cache_path(title, artist, duration, album) -> str:
+    key = f"{title}\x1f{artist}\x1f{int(round(duration))}\x1f{album}".lower()
+    return os.path.join(CACHE_DIR, hashlib.md5(key.encode()).hexdigest() + ".json")
+
+
+INSTRUMENTAL_LINE = re.compile(r"^[\s♪♫♬♩🎵🎶*.\-–—()\[\]]*(instrumental|instrumentation|no lyrics)?[\s♪♫♬♩🎵🎶*.\-–—()\[\]]*$", re.I)
+
+
+def is_instrumental(lines: list) -> bool:
+    """Lyrics that only say the track is instrumental (or only hold music notes)."""
+    return all(INSTRUMENTAL_LINE.match(l.get("text") or "") for l in lines)
+
+
+def emit(lines: list, plain: bool = False):
+    # Instrumental tracks are shown like tracks without lyrics (waveform in the player)
+    if not lines or is_instrumental(lines):
         print("not_found", flush=True)
-        sys.exit(0)
+        return
     parts = []
     for line in lines:
-        parts.append(str(line["time"]))
+        parts.append(f"{line['time']:.3f}")
         parts.append(line["text"].replace("§", ""))
-    parts.append("ok")
+    parts.append("plain" if plain else "ok")
     print("§".join(parts), flush=True)
+
+
+def main():
+    refresh = "--refresh" in sys.argv
+    sys.argv = [a for a in sys.argv if a != "--refresh"]
+    if len(sys.argv) < 4:
+        print("no_info", flush=True)
+        return
+    title, artist = sys.argv[1].strip(), sys.argv[2].strip()
+    try:
+        duration = float(sys.argv[3])
+    except ValueError:
+        duration = 0.0
+    album = sys.argv[4].strip() if len(sys.argv) > 4 else ""
+    if not title or not artist:
+        print("no_info", flush=True)
+        return
+
+    path = cache_path(title, artist, duration, album)
+    try:
+        with open(path) as f:
+            cached = json.load(f)
+        age = time.time() - cached.get("time", 0)
+        # Synced lyrics never expire; plain ones and misses are retried later (a synced
+        # version may be added to lrclib)
+        fresh = (cached.get("lines") and not cached.get("plain")) or age < NOT_FOUND_TTL
+        if fresh and not refresh:
+            emit(cached.get("lines") or [], cached.get("plain", False))
+            return
+    except Exception:
+        pass
+
+    lines, plain = fetch(title, artist, duration, album)
+    try:
+        os.makedirs(CACHE_DIR, exist_ok=True)
+        with open(path, "w") as f:
+            json.dump({"time": time.time(), "lines": lines, "plain": plain}, f)
+    except Exception:
+        pass
+    emit(lines, plain)
+
 
 if __name__ == "__main__":
     main()

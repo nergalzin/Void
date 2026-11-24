@@ -36,8 +36,6 @@ Button {
     implicitWidth: (root.down && bounce) ? clickedWidth : baseWidth
     implicitHeight: (root.down && bounce) ? clickedHeight : baseHeight
 
-    property bool glass: false
-    readonly property bool glassActive: glass && !toggled && (Config.options?.background.widgets.glass.enable ?? false)
     property color colBackground: ColorUtils.transparentize(colBackgroundHover, 1) || "transparent"
     property color colBackgroundHover: Appearance?.colors.colLayer1Hover ?? "#E5DFED"
     property color colBackgroundActive: Appearance?.colors.colLayer1Active ?? "#D6CEE2"
@@ -55,7 +53,6 @@ Button {
         (root.down ? colBackgroundActive : 
             root.hovered ? colBackgroundHover : 
             colBackground)) : colBackground
-    readonly property color paintedColor: root.glassActive ? (root.hovered || root.down ? ColorUtils.transparentize(root.color, 0.6) : "transparent") : root.color
 
     onDownChanged: {
         if (root.down) {
@@ -129,14 +126,7 @@ Button {
         bottomRightRadius: root.rightRadius
         implicitHeight: 50
 
-        color: root.paintedColor
-
-        WindowGlass {
-            anchors.fill: parent
-            glassEnabled: root.glassActive
-            cardRadius: Math.min(root.leftRadius, root.rightRadius)
-        }
-
+        color: root.color
         Behavior on color {
             animation: Appearance.animation.elementMoveFast.colorAnimation.createObject(this)
         }

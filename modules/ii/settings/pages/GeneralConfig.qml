@@ -11,12 +11,6 @@ ContentPage {
     id: page
     forceWidth: true
 
-    
-    Process {
-        id: translationProc
-        property string locale: ""
-        command: [Directories.aiTranslationScriptPath, translationProc.locale]
-    }
 
     ColumnLayout {
         id: mainLayout 
@@ -38,55 +32,8 @@ ContentPage {
                     fixedWidth: true
                     searchable: true
                     model: SystemAppearance.toOptions(SystemAppearance.iconThemes)
-                    currentValue: Config.options.appearance.icons.theme
-                    onSelected: newValue => {
-                        if (Config.options.appearance.icons.theme === newValue) return
-                        Config.options.appearance.icons.theme = newValue
-                        SystemAppearance.applyIconScheme()
-                    }
-                }
-                ConfigSwitch {
-                    buttonIcon: "brightness_6"
-                    text: Translation.tr("Follow color scheme")
-                    checked: Config.options.appearance.icons.followScheme
-                    onCheckedChanged: {
-                        if (Config.options.appearance.icons.followScheme === checked) return
-                        Config.options.appearance.icons.followScheme = checked
-                        SystemAppearance.applyIconScheme()
-                    }
-                }
-                ConfigSwitch {
-                    buttonIcon: "palette"
-                    text: Translation.tr("Dynamic accent colors")
-                    checked: Config.options.appearance.icons.dynamicColor
-                    enabled: SystemAppearance.iconCapability() !== "none"
-                    onCheckedChanged: {
-                        if (Config.options.appearance.icons.dynamicColor === checked) return
-                        Config.options.appearance.icons.dynamicColor = checked
-                        SystemAppearance.applyIconScheme()
-                    }
-                }
-                ConfigSwitch {
-                    buttonIcon: "shield"
-                    text: Translation.tr("Prevent Breeze override")
-                    checked: Config.options.appearance.icons.preventBreezeOverride
-                    onCheckedChanged: {
-                        if (Config.options.appearance.icons.preventBreezeOverride === checked) return
-                        Config.options.appearance.icons.preventBreezeOverride = checked
-                        SystemAppearance.applyIconScheme()
-                    }
-                }
-                RippleButtonWithIcon {
-                    Layout.fillWidth: true
-                    materialIcon: "restart_alt"
-                    mainText: Translation.tr("Restore KDE icon settings")
-                    onClicked: {
-                        // Stop re-syncing the wrapper before restoring its
-                        // original values, otherwise the next apply would
-                        // immediately overwrite them again.
-                        Config.options.appearance.icons.preventBreezeOverride = false
-                        SystemAppearance.restoreKdeIcons()
-                    }
+                    currentValue: SystemAppearance.iconTheme
+                    onSelected: newValue => SystemAppearance.setIcons(newValue)
                 }
                 ConfigComboBox {
                     Layout.fillWidth: true
@@ -291,6 +238,142 @@ ContentPage {
                     }
                 }
             }
+
+            ContentSubsection {
+                title: Translation.tr("Pomodoro")
+
+                GroupedList {
+                    ConfigSelectionArray {
+                        text: Translation.tr("Clock style")
+                        icon: "timer"
+                        currentValue: Config.options.time.pomodoro.style
+                        onSelected: newValue => {
+                            Config.options.time.pomodoro.style = newValue;
+                        }
+                        options: [
+                            { value: "dial", displayName: Translation.tr("Dial"), icon: "nest_clock_farsight_analog" },
+                            { value: "digital", displayName: Translation.tr("Digital"), icon: "123" }
+                        ]
+                    }
+
+                    ConfigSpinBox {
+                        id: pomoFocusSpin
+                        icon: "visibility"
+                        text: Translation.tr("Focus time (min)")
+                        // Binding element keeps it in sync when the sidebar changes the value
+                        Binding { target: pomoFocusSpin; property: "value"; value: Math.round(Config.options.time.pomodoro.focus / 60) }
+                        from: 1
+                        to: 120
+                        stepSize: 1
+                        onValueChanged: {
+                            if (Config.ready && value >= from && value * 60 !== Config.options.time.pomodoro.focus)
+                                Config.options.time.pomodoro.focus = value * 60;
+                        }
+                    }
+
+                    ConfigSpinBox {
+                        id: pomoBreakSpin
+                        icon: "coffee"
+                        text: Translation.tr("Break time (min)")
+                        // Binding element keeps it in sync when the sidebar changes the value
+                        Binding { target: pomoBreakSpin; property: "value"; value: Math.round(Config.options.time.pomodoro.breakTime / 60) }
+                        from: 1
+                        to: 60
+                        stepSize: 1
+                        onValueChanged: {
+                            if (Config.ready && value >= from && value * 60 !== Config.options.time.pomodoro.breakTime)
+                                Config.options.time.pomodoro.breakTime = value * 60;
+                        }
+                    }
+
+                    ConfigSpinBox {
+                        id: pomoLongSpin
+                        icon: "park"
+                        text: Translation.tr("Long break time (min)")
+                        // Binding element keeps it in sync when the sidebar changes the value
+                        Binding { target: pomoLongSpin; property: "value"; value: Math.round(Config.options.time.pomodoro.longBreak / 60) }
+                        from: 1
+                        to: 90
+                        stepSize: 1
+                        onValueChanged: {
+                            if (Config.ready && value >= from && value * 60 !== Config.options.time.pomodoro.longBreak)
+                                Config.options.time.pomodoro.longBreak = value * 60;
+                        }
+                    }
+
+                    ConfigSpinBox {
+                        id: pomoCyclesSpin
+                        icon: "repeat"
+                        text: Translation.tr("Cycles before long break")
+                        // Binding element keeps it in sync when the sidebar changes the value
+                        Binding { target: pomoCyclesSpin; property: "value"; value: Config.options.time.pomodoro.cyclesBeforeLongBreak }
+                        from: 1
+                        to: 10
+                        stepSize: 1
+                        onValueChanged: {
+                            if (Config.ready && value >= from && value !== Config.options.time.pomodoro.cyclesBeforeLongBreak)
+                                Config.options.time.pomodoro.cyclesBeforeLongBreak = value;
+                        }
+                    }
+                }
+            }
+        }
+
+        ContentSection {
+            icon: "bedtime"
+            shape: MaterialShape.Shape.Cookie4Sided
+            title: Translation.tr("Night light")
+
+            ConfigSpinBox {
+                icon: "thermostat"
+                text: Translation.tr("Color temperature (K)")
+                value: Config.options.light.night.colorTemperature
+                from: 1200
+                to: 6500
+                stepSize: 100
+                onValueChanged: {
+                    if (value !== Config.options.light.night.colorTemperature) Config.options.light.night.colorTemperature = value;
+                }
+            }
+
+            ContentSubsection {
+                title: Translation.tr("Schedule")
+                tooltip: Translation.tr("Also available by right-clicking the night light button in the right sidebar")
+
+                ConfigSwitch {
+                    buttonIcon: "night_sight_auto"
+                    text: Translation.tr("Automatic schedule")
+                    checked: Config.options.light.night.automatic
+                    onCheckedChanged: { Config.options.light.night.automatic = checked }
+                }
+                ConfigTimeRow {
+                    enabled: Config.options.light.night.automatic
+                    icon: "bedtime"
+                    text: Translation.tr("Turn on at")
+                    value: Config.options.light.night.from
+                    onEdited: newValue => { Config.options.light.night.from = newValue }
+                }
+                ConfigTimeRow {
+                    enabled: Config.options.light.night.automatic
+                    icon: "wb_sunny"
+                    text: Translation.tr("Turn off at")
+                    value: Config.options.light.night.to
+                    onEdited: newValue => { Config.options.light.night.to = newValue }
+                }
+            }
+
+            ContentSubsection {
+                title: Translation.tr("When the PC starts")
+                ConfigSelectionArray {
+                    currentValue: Config.options.light.night.startup
+                    onSelected: newValue => { Config.options.light.night.startup = newValue }
+                    options: [
+                        { displayName: Translation.tr("Off"), icon: "light_off", value: "off" },
+                        { displayName: Translation.tr("On"), icon: "bedtime", value: "on" },
+                        { displayName: Translation.tr("Follow schedule"), icon: "night_sight_auto", value: "schedule" },
+                    ]
+                }
+            }
         }
 
         ContentSection {
@@ -330,6 +413,14 @@ ContentPage {
                     checked: Config.options.battery.peripheralNotify
                     onCheckedChanged: {
                         Config.options.battery.peripheralNotify = checked;
+                    }
+                }
+                ConfigSwitch {
+                    buttonIcon: "battery_charging_full"
+                    text: Translation.tr("Notify when a controller is fully charged")
+                    checked: Config.options.battery.peripheralFullNotify
+                    onCheckedChanged: {
+                        Config.options.battery.peripheralFullNotify = checked;
                     }
                 }
             }
@@ -470,89 +561,6 @@ ContentPage {
                     }
                 }
             }
-
-            ContentSubsection {
-                title: Translation.tr("Football")
-                visible: Config.options.sidebar.football.enable
-
-                GroupedList {
-                    ConfigSwitch {
-                        buttonIcon: "notifications_active"
-                        text: Translation.tr("Live alerts")
-                        checked: Config.options.sidebar.football.alerts
-                        onCheckedChanged: { Config.options.sidebar.football.alerts = checked }
-                    }
-                    ConfigSelectionArray {
-                        text: Translation.tr("Alerts for")
-                        icon: "filter_alt"
-                        currentValue: Config.options.sidebar.football.alertsScope
-                        onSelected: newValue => { Config.options.sidebar.football.alertsScope = newValue }
-                        options: [
-                            { displayName: Translation.tr("My parlay"), icon: "layers", value: "parlay" },
-                            { displayName: Translation.tr("All matches"), icon: "public", value: "all" }
-                        ]
-                    }
-                    ConfigSwitch {
-                        buttonIcon: "campaign"
-                        text: Translation.tr("Goal sound")
-                        checked: Config.options.sidebar.football.goalSound
-                        onCheckedChanged: { Config.options.sidebar.football.goalSound = checked }
-                    }
-                    ConfigTextArea {
-                        id: goalFileField
-                        Layout.fillWidth: true
-                        fieldWidth: 320
-                        buttonIcon: "audio_file"
-                        text: Translation.tr("Goal sound file (empty = default)")
-                        placeholderText: "~/Music/goal.ogg"
-                        value: Config.options.sidebar.football.goalSoundPath
-                        onValueChanged: goalFileTimer.restart()
-
-                        Timer {
-                            id: goalFileTimer
-                            interval: 600
-                            onTriggered: Config.options.sidebar.football.goalSoundPath = goalFileField.value
-                        }
-                    }
-                    ConfigSwitch {
-                        buttonIcon: "flag"
-                        text: Translation.tr("Corner sound")
-                        checked: Config.options.sidebar.football.cornerSound
-                        onCheckedChanged: { Config.options.sidebar.football.cornerSound = checked }
-                    }
-                    ConfigTextArea {
-                        id: cornerFileField
-                        Layout.fillWidth: true
-                        fieldWidth: 320
-                        buttonIcon: "audio_file"
-                        text: Translation.tr("Corner sound file (empty = default)")
-                        placeholderText: "~/Music/corner.ogg"
-                        value: Config.options.sidebar.football.cornerSoundPath
-                        onValueChanged: cornerFileTimer.restart()
-
-                        Timer {
-                            id: cornerFileTimer
-                            interval: 600
-                            onTriggered: Config.options.sidebar.football.cornerSoundPath = cornerFileField.value
-                        }
-                    }
-                    ConfigSwitch {
-                        buttonIcon: "notifications"
-                        text: Translation.tr("Goal notifications")
-                        checked: Config.options.sidebar.football.notify
-                        onCheckedChanged: { Config.options.sidebar.football.notify = checked }
-                    }
-                    ConfigSpinBox {
-                        icon: "volume_up"
-                        text: Translation.tr("Sound volume")
-                        value: Config.options.sidebar.football.soundVolume
-                        from: 0
-                        to: 100
-                        stepSize: 5
-                        onValueChanged: { Config.options.sidebar.football.soundVolume = value }
-                    }
-                }
-            }
         }
 
         ContentSection {
@@ -573,37 +581,6 @@ ContentPage {
                     currentValue: Config.options.language.ui
                     onSelected: newValue => {
                         Config.options.language.ui = newValue;
-                    }
-                }
-
-                ColumnLayout {
-                    id: translationCol
-                    Layout.fillWidth: true
-                    spacing: 8
-
-                    ConfigTextArea {
-                        id: localeField
-                        Layout.fillWidth: true
-                        buttonIcon: "translate"
-                        text: Translation.tr("Locale code")
-                        placeholderText: Translation.tr("e.g. fr_FR, de_DE, zh_CN...")
-                        value: Config.options.language.ui === "auto" ? Qt.locale().name : Config.options.language.ui
-                    }
-
-                    RippleButtonWithIcon {
-                        id: generateTranslationBtn
-                        Layout.fillWidth: false
-                        Layout.alignment: Qt.AlignRight
-                        Layout.preferredHeight: 50
-                        Layout.rightMargin: 8
-                        nerdIcon: ""
-                        enabled: !translationProc.running || (translationProc.locale !== localeField.value.trim())
-                        mainText: enabled ? Translation.tr("Generate\nTypically takes 2 minutes") : Translation.tr("Generating...\nDon't close this window!")
-                        onClicked: {
-                            translationProc.locale = localeField.value.trim();
-                            translationProc.running = false;
-                            translationProc.running = true;
-                        }
                     }
                 }
             }

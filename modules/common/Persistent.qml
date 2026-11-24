@@ -59,7 +59,7 @@ Singleton {
             property string hyprlandInstanceSignature: ""
 
             property JsonObject ai: JsonObject {
-                property string model: "gemini-2.5-flash"
+                property string model: ""
                 property real temperature: 0.5
             }
 
@@ -68,6 +68,8 @@ Singleton {
             }
 
             property JsonObject sidebar: JsonObject {
+                property string leftTab: "" // icon of the last open left-sidebar tab
+                property string leftPlayer: "" // dbus name of the player picked by hand in the left sidebar ("" = automatic)
                 property JsonObject bottomGroup: JsonObject {
                     property bool collapsed: false
                     property int tab: 0
@@ -146,6 +148,14 @@ Singleton {
                     property real y: 42
                     property real width: 460
                     property real height: 330
+                }
+                property JsonObject mediaPlayers: JsonObject {
+                    property bool pinned: false
+                    property bool clickthrough: false
+                    property real x: 1500
+                    property real y: 400
+                    property real width: 350
+                    property real height: 270
                 }
             }
 

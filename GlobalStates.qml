@@ -12,6 +12,7 @@ Singleton {
     signal requestBluetoothDialog()
     property bool barOpen: true
     property bool barStyleEditorOpen: false
+    property bool cheatsheetOpen: false
     property bool crosshairOpen: false
     property bool equalizerOpen: false
     property bool sidebarLeftOpen: false
@@ -28,7 +29,6 @@ Singleton {
     property bool screenLocked: false
     property bool screenLockContainsCharacters: false
     property bool screenUnlockFailed: false
-    property bool screenTranslatorOpen: false
     property bool sessionOpen: false
     property bool superDown: false
     property bool superReleaseMightTrigger: true
@@ -55,8 +55,6 @@ Singleton {
     property real dropShelfY: 0
     property string osdIndicatorType: "volume"
     property bool barCenterOnly: false
-    property int dashboardPage: 0
-    property string dashboardGroup: ""
     property var frameHover: ({})
     function setFrameHover(screenName, side, hovered) {
         const key = `${screenName}:${side}`;
@@ -106,7 +104,6 @@ Singleton {
         { displayName: Translation.tr("Media Controls"),         value: "mediaControlsOpen" },
         { displayName: Translation.tr("Overlay"),                value: "overlayOpen" },
         { displayName: Translation.tr("ScreenShot Region"),        value: "regionSelectorOpen" },
-        { displayName: Translation.tr("Screen Translator"),      value: "screenTranslatorOpen" },
         { displayName: Translation.tr("On-screen Keyboard"),     value: "oskOpen" },
         { displayName: Translation.tr("Session Menu"),           value: "sessionOpen" },
         { displayName: Translation.tr("Equalizer"),           value: "equalizerOpen" }

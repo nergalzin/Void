@@ -11,14 +11,18 @@ Singleton {
     id: root
 
     readonly property string scriptPath: FileUtils.trimFileProtocol(`${Directories.scriptPath}/system-appearance.sh`)
-    readonly property string iconManagerPath: FileUtils.trimFileProtocol(`${Directories.scriptPath}/theming/icon-theme-manager.sh`)
-    readonly property string iconStatusPath: FileUtils.trimFileProtocol(`${Directories.state}/user/generated/icons/status.json`)
-
-    property var iconStatus: ({})
-    property bool iconManagerPending: false
 
     property int iconRevision: 0
-    property string startupIconTheme: ""
+    // Icon theme Qt loaded when the quickshell *process* started. Quickshell.iconPath()
+    // keeps using it for the whole process lifetime, even across config reloads
+    // (reload button, file changes), so it must survive reloads too - otherwise after
+    // a reload we'd think the current theme is the native one and show the old icons.
+    property alias startupIconTheme: persist.startupIconTheme
+    PersistentProperties {
+        id: persist
+        reloadableId: "systemAppearanceStartupIconTheme"
+        property string startupIconTheme: ""
+    }
     property var resolvedIcons: ({})
     readonly property var iconQueue: ({ names: [] })
 
@@ -144,57 +148,6 @@ Singleton {
         root.run(["--set-icons", name])
     }
 
-    function applyIconScheme() {
-        // Config writes are debounced (50 ms). Wait for the new options to hit
-        // disk before the manager reads them.
-        iconApplyTimer.restart()
-    }
-
-    function applyIconSchemeNow() {
-        if (iconManagerProc.running) {
-            root.iconManagerPending = true
-            return
-        }
-        iconManagerProc.command = ["bash", root.iconManagerPath, "--sync", "--apply", "--source", "manual"]
-        iconManagerProc.running = true
-    }
-
-    Timer {
-        id: iconApplyTimer
-        interval: 250
-        repeat: false
-        onTriggered: root.applyIconSchemeNow()
-    }
-
-    function restoreKdeIcons() {
-        const proc = restoreComponent.createObject(root)
-        proc.running = true
-    }
-
-    function iconCapability() {
-        return root.iconStatus.capability || "full"
-    }
-
-    Process {
-        id: iconManagerProc
-        onExited: (code, status) => {
-            root.iconRevision += 1
-            iconStatusFile.reload()
-            if (root.iconManagerPending) {
-                root.iconManagerPending = false
-                root.applyIconScheme()
-            }
-        }
-    }
-
-    Component {
-        id: restoreComponent
-        Process {
-            command: ["bash", root.iconManagerPath, "--restore-kmyc"]
-            onExited: (code, status) => destroy()
-        }
-    }
-
     function setCursor(name, size) {
         root.cursorTheme = name
         root.cursorSize = size
@@ -270,35 +223,26 @@ Singleton {
         }
     }
 
-    FileView {
-        id: iconStatusFile
-        path: root.iconStatusPath
-        watchChanges: true
-        onFileChanged: reload()
-        onLoaded: {
-            try {
-                root.iconStatus = JSON.parse(iconStatusFile.text())
-                root.iconRevision += 1
-            } catch (e) {
-                root.iconStatus = ({})
-            }
-        }
-        onLoadFailed: error => {
-            if (error === FileViewError.FileNotFound) root.iconStatus = ({})
-        }
-    }
+    // Webapp launchers follow the icon theme: use the theme's icon when it has one
+    // (whatsapp, youtube-music...), the site's own icon otherwise
+    onIconThemeChanged: if (root.iconTheme !== "") webappRethemeTimer.restart()
 
     Timer {
+        id: webappRethemeTimer
         interval: 1500
-        repeat: true
-        running: root.iconStatus && (root.iconStatus.state === "queued"
-            || root.iconStatus.state === "generating"
-            || root.iconStatus.state === "publishing")
-        onTriggered: iconStatusFile.reload()
+        onTriggered: {
+            webappRethemeProc.environment = { "WEBAPP_ICON_THEME": root.iconTheme }
+            webappRethemeProc.running = true
+        }
     }
 
-    Component.onCompleted: {
-        root.refresh()
-        root.applyIconScheme()
+    Process {
+        id: webappRethemeProc
+        command: ["bash", FileUtils.trimFileProtocol(`${Directories.scriptPath}/webapp/webapp.sh`), "retheme"]
+        stdout: StdioCollector {
+            onStreamFinished: if (text.includes("CHANGED")) Webapps.refresh()
+        }
     }
+
+    Component.onCompleted: root.refresh()
 }

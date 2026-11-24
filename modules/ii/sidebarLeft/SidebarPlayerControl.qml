@@ -15,24 +15,51 @@ import Quickshell.Services.Mpris
 
 Item {
     id: root
-    // Show all available MPRIS players.
-    property var availablePlayers: Mpris.players.values
+    // Players offered in the selector: same filtered list as the rest of the shell
+    // (no playerctld copy, no browser duplicates)
+    readonly property var players: MprisController.players
+    // Player picked by hand. Empty = automatic (follows whatever is playing).
+    readonly property string manualPlayerName: Persistent.states.sidebar.leftPlayer
+    readonly property var manualPlayer: {
+        const name = root.manualPlayerName;
+        if (!name) return null;
+        return root.players.find(p => p.dbusName === name) ?? null;
+    }
+    property var player: root.manualPlayer ?? MprisController.activePlayer ?? root.players[0] ?? null
 
-    // Optional: Hide Chromium's built-in MPRIS instances
-    // if they appear as duplicate players.
-    // To enable this filter, comment out the property above
-    // and uncomment the block below.
+    function choosePlayer(p) {
+        Persistent.states.sidebar.leftPlayer = p?.dbusName ?? "";
+    }
 
-    // property var availablePlayers: Mpris.players.values.filter(p => {
-    //     const service = (p.dbusName ?? "").toLowerCase()
-    //     return !service.includes("org.mpris.mediaplayer2.chromium.instance")
-    // })
-
-    // Currently selected player
-    property var player: availablePlayers[root.currentPlayerIndex] ?? availablePlayers[0]
-    property var artUrl: player?.trackArtUrl ?? ""
+    // Automatic switching: when another app starts playing, follow it unless the
+    // app picked by hand is itself playing right now.
+    function followPlaying() {
+        if (root.manualPlayer && root.manualPlayer.isPlaying) return;
+        if (root.players.some(p => p.isPlaying && p !== root.manualPlayer))
+            root.choosePlayer(null);   // back to automatic -> MprisController.activePlayer
+    }
+    // The sidebar is unloaded while closed: catch up on what changed meanwhile
+    Component.onCompleted: {
+        root.followPlaying();
+        LyricsService.pinnedPlayer = root.player ?? null;
+    }
+    Instantiator {
+        model: root.players
+        delegate: Connections {
+            required property var modelData
+            target: modelData
+            function onIsPlayingChanged() {
+                if (modelData.isPlaying && modelData !== root.player) root.followPlaying();
+            }
+        }
+    }
+    property var artUrl: CoverArt.url(player)
     property string artDownloadLocation: Directories.coverArt
     property bool showLyrics: Config.options.sidebar.media.showLyrics ?? true
+    // No lyrics for this track (not found or instrumental): show only the waveform
+    // (the lyrics button keeps the user's choice, so the next track with lyrics shows them again)
+    readonly property bool lyricsUnavailable: LyricsService.status === "not_found" || LyricsService.status === "no_info"
+    readonly property bool showingLyrics: root.showLyrics && !root.lyricsUnavailable
     property string artFileName: Qt.md5(artUrl)
     property string artFilePath: `${artDownloadLocation}/${artFileName}`
     property color artDominantColor: Config.options.sidebar.media.artColors
@@ -47,7 +74,10 @@ Item {
     property real maxVisualizerValue: 1000
     property int visualizerSmoothing: 2
     property real radius
-    property int currentPlayerIndex: 0
+
+    // Keep the lyrics on the player shown here
+    onPlayerChanged: LyricsService.pinnedPlayer = root.player ?? null
+    Component.onDestruction: if (LyricsService.pinnedPlayer === root.player) LyricsService.pinnedPlayer = null
     property bool blurredBackground: Config.options.sidebar.media.blurredBackground ?? false
     property bool shapeArt: Config.options.sidebar.media.shapeArt ?? false
     readonly property var artShapeOptions: ["Circle", "Square", "Pill", "Bun", "Cookie12Sided", "Clover4Leaf", "Heart", "Slanted", "Arch", "Arrow", "SemiCircle", "Oval", "Triangle", "Diamond", "ClamShell", "Pentagon", "Gem", "Sunny", "VerySunny", "Cookie4Sided", "Cookie6Sided", "Cookie7Sided", "Cookie9Sided", "Ghostish", "Clover8Leaf", "Burst", "SoftBurst", "Boom", "SoftBoom", "Flower", "Puffy", "PuffyDiamond"]
@@ -88,11 +118,25 @@ Item {
         }
     }
 
+    // Cover cache cleared from the menu: download the current cover again
+    Connections {
+        target: CoverArt
+        function onCleared() {
+            if (!root.artUrl) return;
+            coverArtDownloader.running = false;
+            coverArtDownloader.targetFile = root.artUrl;
+            coverArtDownloader.artFilePath = root.artFilePath;
+            root.downloaded = false;
+            coverArtDownloader.running = true;
+        }
+    }
+
     Process {
         id: coverArtDownloader
         property string targetFile: root.artUrl
         property string artFilePath: root.artFilePath
-        command: ["bash", "-c", `[ -f ${artFilePath} ] || curl -sSL '${targetFile}' -o '${artFilePath}'`]
+        // Download to a temp file first so a half-written image is never shown
+        command: ["bash", "-c", `[ -f '${artFilePath}' ] || { curl -sSL '${targetFile}' -o '${artFilePath}.part' && mv -f '${artFilePath}.part' '${artFilePath}'; }`]
         onExited: (exitCode, exitStatus) => { root.downloaded = true }
     }
 
@@ -114,16 +158,9 @@ Item {
         anchors.rightMargin: 4
         anchors.topMargin: -1
         anchors.bottomMargin: 4
-        color: Config.options.background.widgets.glass.enable ? "transparent" : ColorUtils.transparentize(artDominantColor, 0.9)
+        color: ColorUtils.transparentize(artDominantColor, 0.9)
         radius: Appearance.rounding.normal
         clip: true
-
-        WindowGlass {
-            anchors.fill: parent
-            cardRadius: parent.radius
-            tint: root.artDominantColor
-            tintStrength: 0
-        }
 
         Image {
             id: blurArtSource
@@ -223,7 +260,7 @@ Item {
                 }
 
                 MaterialSymbol {
-                    visible: MprisController.activePlayer === null
+                    visible: MprisController.activePlayer === null || root.displayedArtFilePath === ""
                     anchors.centerIn: parent 
                     fill: 1
                     text: "music_note"
@@ -300,7 +337,7 @@ Item {
                 Lyrics {
                     id: lyricsComp
                     anchors.fill: parent
-                    opacity: (MprisController.activePlayer !== null && Config.options.sidebar.media.showLyrics) ? 1 : 0
+                    opacity: (MprisController.activePlayer !== null && root.showingLyrics) ? 1 : 0
                     textAlignment: Text.AlignHCenter
                     textColor: blendedColors.colOnLayer0
                     activeColor: blendedColors.colPrimary
@@ -319,7 +356,7 @@ Item {
 
                 Loader {
                     anchors.fill: parent
-                    active: !Config.options.sidebar.media.showLyrics
+                    active: !root.showingLyrics
                     opacity: active ? 1 : 0
                     Behavior on opacity { NumberAnimation { duration: 200 } }
 
@@ -343,6 +380,7 @@ Item {
                 RowLayout {
                     Layout.fillWidth: true
                     spacing: 12
+
                     RippleButton {
                         property real baseSize: Math.max(60, parent.parent.height * 0.06)
                         implicitWidth: baseSize
@@ -411,6 +449,7 @@ Item {
                     Layout.fillWidth: true
                     spacing: 24
 
+
                     ColumnLayout {
                         Layout.fillWidth: true
                         spacing: 4
@@ -432,7 +471,7 @@ Item {
                                     value: (sliderLoader.player?.position ?? 0) / (sliderLoader.player?.length ?? 1)
                                     onMoved: {
                                         sliderLoader.player.position = value * sliderLoader.player.length
-                                        lyricsComp.restartLyrics()
+                                        LyricsService.resync()
                                     }
                                 }
                             }
@@ -528,26 +567,24 @@ Item {
                     }
                 }
 
-                   // Volume slider
-                   StyledSlider {
-                        Layout.fillWidth: true
-                        Layout.alignment: Qt.AlignVCenter
 
-                        configuration: StyledSlider.Configuration.Wavy
-
-                        highlightColor: blendedColors.colPrimary
-                        trackColor: blendedColors.colSecondaryContainer
-                        handleColor: blendedColors.colPrimary
-
-                        value: root.player?.volume ?? 1
-
-                        onMoved: {
-                            if (root.player)
+                StyledSlider {
+                    Layout.fillWidth: true
+                    Layout.alignment: Qt.AlignVCenter
+                    from: 0
+                    to: 1.5   // keeps the old +/- buttons' 150% ceiling
+                    configuration: StyledSlider.Configuration.Wavy
+                    highlightColor: blendedColors.colPrimary
+                    trackColor: blendedColors.colSecondaryContainer
+                    handleColor: blendedColors.colPrimary
+                    value: root.player?.volume ?? 1
+                    onMoved: {
+                        if (root.player)
                             root.player.volume = value
-                        }
                     }
+                }
 
-               RippleButton {
+                RippleButton {
                     id: moreButton
                     property real baseSize: Math.max(36, parent.parent.height * 0.05)
                     implicitWidth: baseSize
@@ -656,6 +693,43 @@ Item {
                                 checked: Config.options.sidebar.media.blurredBackground
                                 onCheckedChanged: { Config.options.sidebar.media.blurredBackground = checked }
                             }
+
+                            RippleButton {
+                                id: clearCoversButton
+                                Layout.fillWidth: true
+                                implicitHeight: 40
+                                buttonRadius: Appearance.rounding.full
+                                enabled: !CoverArt.clearing
+                                colBackground: Appearance.colors.colLayer2
+                                colBackgroundHover: Appearance.colors.colLayer2Hover
+                                colRipple: Appearance.colors.colLayer2Active
+                                property bool done: false
+                                onClicked: {
+                                    CoverArt.clearCache();
+                                    done = true;
+                                    doneTimer.restart();
+                                }
+                                Timer {
+                                    id: doneTimer
+                                    interval: 2000
+                                    onTriggered: clearCoversButton.done = false
+                                }
+                                contentItem: RowLayout {
+                                    spacing: 8
+                                    MaterialSymbol {
+                                        Layout.leftMargin: 4
+                                        text: clearCoversButton.done ? "check" : "delete_sweep"
+                                        iconSize: 20
+                                        color: Appearance.colors.colOnLayer2
+                                    }
+                                    StyledText {
+                                        Layout.fillWidth: true
+                                        text: clearCoversButton.done ? Translation.tr("Cleared") : Translation.tr("Clear cover cache")
+                                        color: Appearance.colors.colOnLayer2
+                                        elide: Text.ElideRight
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -664,17 +738,20 @@ Item {
             // ── Player selector ──
             StyledComboBox {
                 id: playerSelector
-                visible: Mpris.players.values.length > 1
+                visible: root.players.length > 1
                 Layout.fillWidth: true
                 Layout.topMargin: 12
-                model: root.availablePlayers.map(p =>
-                     p.identity ?? p.desktopEntry ?? "Unknown"
-                )
-               currentIndex: root.currentPlayerIndex
-
-    onActivated: index => {
-        root.currentPlayerIndex = index
+                model: {
+                    const names = root.players.map(p => MprisController.friendlyName(p));
+                    // Same app twice (e.g. two browser tabs): add the track title to tell them apart
+                    return root.players.map((p, i) => {
+                        const dup = names.filter(n => n === names[i]).length > 1;
+                        const title = StringUtils.cleanMusicTitle(p.trackTitle ?? "");
+                        return dup && title ? `${names[i]} · ${title}` : names[i];
+                    });
                 }
+                currentIndex: Math.max(0, root.players.indexOf(root.player))
+                onActivated: index => root.choosePlayer(root.players[index])
             }
         }
     }

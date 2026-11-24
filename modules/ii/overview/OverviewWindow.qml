@@ -2,7 +2,6 @@ pragma ComponentBehavior: Bound
 import qs
 import qs.services
 import qs.modules.common
-import qs.modules.common.widgets
 import qs.modules.common.functions
 import Qt5Compat.GraphicalEffects
 import QtQuick
@@ -122,15 +121,11 @@ Item { // Window
         animation: Appearance.animation.elementMoveEnter.numberAnimation.createObject(this)
     }
 
-    Item {
+    ScreencopyView {
         id: windowPreview
         anchors.fill: parent
-
-        SmoothScreencopyView {
-            anchors.fill: parent
-            captureSource: GlobalStates.overviewOpen ? root.toplevel : null
-            live: true
-        }
+        captureSource: GlobalStates.overviewOpen ? root.toplevel : null
+        live: true
 
         // Color overlay for interactions
         Rectangle {

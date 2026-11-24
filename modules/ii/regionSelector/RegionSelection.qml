@@ -28,7 +28,7 @@ PanelWindow {
 
     // Modes
     // TODO: Ask: sidebar AI
-    enum SnipAction { Copy, Edit, Search, CharRecognition, QrCode, Record, RecordWithSound } 
+    enum SnipAction { Copy, Edit, CharRecognition, Record, RecordWithSound }
     enum SelectionMode { RectCorners, Circle, ScreenTarget }
     enum Phase { Select, Post }
     property var action: RegionSelection.SnipAction.Copy
@@ -96,7 +96,7 @@ PanelWindow {
         const topLayers = layersOfThisMonitor?.levels["2"]
         if (!topLayers) return [];
         const nonBarTopLayers = topLayers
-            .filter(layer => !(layer.namespace.includes(":bar") || layer.namespace.includes(":verticalBar") || layer.namespace.includes(":dock")))
+            .filter(layer => !(layer.namespace.includes(":bar") || layer.namespace.includes(":verticalBar")))
             .map(layer => {
             return {
                 at: [layer.x, layer.y],
@@ -259,12 +259,8 @@ PanelWindow {
                 return ScreenshotAction.Action.Copy;
             case RegionSelection.SnipAction.Edit:
                 return ScreenshotAction.Action.Edit;
-            case RegionSelection.SnipAction.Search:
-                return ScreenshotAction.Action.Search;
             case RegionSelection.SnipAction.CharRecognition:
                 return ScreenshotAction.Action.CharRecognition;
-            case RegionSelection.SnipAction.QrCode:
-                return ScreenshotAction.Action.QrCode;
             case RegionSelection.SnipAction.Record:
                 return ScreenshotAction.Action.Record;
             case RegionSelection.SnipAction.RecordWithSound:

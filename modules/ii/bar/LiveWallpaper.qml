@@ -8,7 +8,8 @@ import QtQuick.Layouts
 
 /*
  * Play and pause the mpvpaper live wallpaper from the bar.
- * With no live wallpaper running it shows a picker shortcut instead.
+ * Hides itself when no live wallpaper is running, so it costs nothing on a
+ * still wallpaper.
  */
 MouseArea {
     id: root
@@ -16,21 +17,17 @@ MouseArea {
     property bool contentColorOverridden: false
     signal styleEditorRequested()
     property bool vertical: Config.options.bar.vertical
-    property bool isMaterial: Config.options.bar.cornerStyle === 3 || Config.options.bar.cornerStyle === 4
+    property bool isMaterial: Appearance.barMaterialLook
 
-    implicitWidth: vertical ? Appearance.sizes.verticalBarWidth : (contentLoader.item?.implicitWidth ?? 0)
-    implicitHeight: vertical ? (contentLoader.item?.implicitHeight ?? 0) : Appearance.sizes.barHeight
+    visible: LiveWallpaper.available
+    implicitWidth: !visible ? 0 : vertical ? Appearance.sizes.verticalBarWidth : (contentLoader.item?.implicitWidth ?? 0)
+    implicitHeight: !visible ? 0 : vertical ? (contentLoader.item?.implicitHeight ?? 0) : Appearance.sizes.barHeight
 
     cursorShape: Qt.PointingHandCursor
     acceptedButtons: Qt.LeftButton | Qt.RightButton
 
     onClicked: (mouse) => {
-        if (mouse.button !== Qt.LeftButton) return;
-        if (LiveWallpaper.available) LiveWallpaper.toggle();
-        else Wallpapers.openFallbackPicker(
-            Appearance.m3colors.darkmode,
-            Config.options.wallpaperSelector.liveWallpapersPath ?? ""
-        );
+        if (mouse.button === Qt.LeftButton) LiveWallpaper.toggle();
     }
     onPressAndHold: (mouse) => {
         if (mouse.button === Qt.RightButton) root.styleEditorRequested();
@@ -40,20 +37,18 @@ MouseArea {
         // A MouseArea has containsMouse, not hovered, and StyledToolTip reads an
         // undefined hovered as "always on". Without this the tip never goes away.
         extraVisibleCondition: root.containsMouse
-        text: !LiveWallpaper.available
-            ? Translation.tr("Pick a live wallpaper")
-            : LiveWallpaper.paused
-                ? Translation.tr("Live wallpaper paused")
-                : Translation.tr("Live wallpaper playing")
+        text: LiveWallpaper.paused
+            ? Translation.tr("Live wallpaper paused")
+            : Translation.tr("Live wallpaper playing")
     }
 
     component Glyph: MaterialSymbol {
-        text: !LiveWallpaper.available ? "video_library" : LiveWallpaper.paused ? "play_arrow" : "pause"
+        text: LiveWallpaper.paused ? "play_arrow" : "pause"
         iconSize: Appearance.font.pixelSize.normal
         fill: 1
         color: root.isMaterial ? Appearance.colors.colPrimary : root.contentColor
         // Dimmed while paused: the bar should read at a glance
-        opacity: LiveWallpaper.available && !LiveWallpaper.paused ? 1 : 0.75
+        opacity: LiveWallpaper.paused ? 0.75 : 1
 
         Behavior on opacity {
             animation: Appearance.animation.elementMoveFast.numberAnimation.createObject(this)

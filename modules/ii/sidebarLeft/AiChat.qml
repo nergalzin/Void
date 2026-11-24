@@ -30,8 +30,35 @@ Item {
         }
     }
 
+    readonly property bool anyPopupOpen: modelPicker.open || ollamaPanel.open || toolsPicker.open || tempPicker.open || promptPicker.open || savePicker.open || loadPicker.open
+    function closePopups() {
+        modelPicker.close();
+        ollamaPanel.close();
+        toolsPicker.close();
+        tempPicker.close();
+        promptPicker.close();
+        savePicker.close();
+        loadPicker.close();
+        root.inputField.forceActiveFocus();
+    }
+
+    // Chat name without folder / extension, for the pickers
+    function chatNameFromPath(path) {
+        return FileUtils.trimFileExt(FileUtils.fileNameForPath(path)).trim();
+    }
+
     Keys.onPressed: event => {
-        messageInputField.forceActiveFocus();
+        if (event.key === Qt.Key_Escape && root.anyPopupOpen) {
+            root.closePopups();
+            event.accepted = true;
+            return;
+        }
+        if (event.key === Qt.Key_Escape && catalogPage.open) {
+            catalogPage.close();
+            event.accepted = true;
+            return;
+        }
+        if (!root.anyPopupOpen && !catalogPage.open) messageInputField.forceActiveFocus();
         if (event.modifiers === Qt.NoModifier) {
             if (event.key === Qt.Key_PageUp) {
                 messageListView.contentY = Math.max(0, messageListView.contentY - messageListView.height / 2);
@@ -89,17 +116,6 @@ Item {
             }
         },
         {
-            name: "key",
-            description: Translation.tr("Set API key"),
-            execute: args => {
-                if (args[0] == "get") {
-                    Ai.printApiKey();
-                } else {
-                    Ai.setApiKey(args[0]);
-                }
-            }
-        },
-        {
             name: "save",
             description: Translation.tr("Save chat"),
             execute: args => {
@@ -140,7 +156,7 @@ Item {
         },
         {
             name: "temp",
-            description: Translation.tr("Set temperature (randomness) of the model. Values range between 0 to 2 for Gemini, 0 to 1 for other models. Default is 0.5."),
+            description: Translation.tr("Set temperature (randomness) of the model. Values range between 0 and 2. Default is 0.5."),
             execute: args => {
                 // console.log(args)
                 if (args.length == 0 || args[0] == "get") {
@@ -246,28 +262,60 @@ Inline w/ backslash and round brackets \\(e^{i\\pi} + 1 = 0\\)
         }
     }
 
+    // Attach button: native file dialog (kdialog), the chosen path goes to Ai.attachFile
+    Process {
+        id: attachPickerProc
+        stdout: StdioCollector {
+            id: attachPickerOut
+        }
+        onExited: (exitCode, exitStatus) => {
+            const path = attachPickerOut.text.trim();
+            if (exitCode === 0 && path.length > 0) Ai.attachFile(path);
+            root.inputField.forceActiveFocus();
+        }
+    }
+    function pickFileToAttach() {
+        attachPickerProc.exec(["kdialog", "--title", Translation.tr("Attach an image / file"), "--getopenfilename", Quickshell.env("HOME")]);
+    }
+
     component StatusItem: MouseArea {
         id: statusItem
         property string icon
         property string statusText
         property string description
+        property bool clickable: false
+        property real maxTextWidth: -1
+        signal activated()
         hoverEnabled: true
+        cursorShape: clickable ? Qt.PointingHandCursor : Qt.ArrowCursor
+        onClicked: if (clickable) statusItem.activated()
         implicitHeight: statusItemRowLayout.implicitHeight
         implicitWidth: statusItemRowLayout.implicitWidth
 
         RowLayout {
             id: statusItemRowLayout
-            spacing: 0
+            spacing: 5
             MaterialSymbol {
+                Layout.alignment: Qt.AlignVCenter
                 text: statusItem.icon
-                iconSize: Appearance.font.pixelSize.huge
+                iconSize: Appearance.font.pixelSize.larger
                 color: Appearance.colors.colSubtext
             }
             StyledText {
+                Layout.alignment: Qt.AlignVCenter
+                Layout.maximumWidth: statusItem.maxTextWidth > 0 ? statusItem.maxTextWidth : implicitWidth
                 font.pixelSize: Appearance.font.pixelSize.small
                 text: statusItem.statusText
-                color: Appearance.colors.colSubtext
+                elide: Text.ElideRight
+                color: statusItem.clickable ? Appearance.colors.colOnLayer2 : Appearance.colors.colSubtext
                 animateChange: true
+            }
+            MaterialSymbol {
+                visible: statusItem.clickable
+                Layout.alignment: Qt.AlignVCenter
+                text: "expand_more"
+                iconSize: Appearance.font.pixelSize.larger
+                color: Appearance.colors.colSubtext
             }
         }
 
@@ -279,6 +327,7 @@ Inline w/ backslash and round brackets \\(e^{i\\pi} + 1 = 0\\)
     }
 
     component StatusSeparator: Rectangle {
+        Layout.alignment: Qt.AlignVCenter
         implicitWidth: 4
         implicitHeight: 4
         radius: implicitWidth / 2
@@ -324,7 +373,7 @@ Inline w/ backslash and round brackets \\(e^{i\\pi} + 1 = 0\\)
                     top: parent.top
                     topMargin: 0
                 }
-                implicitWidth: statusRowLayout.implicitWidth + 10 * 2
+                implicitWidth: statusRowLayout.implicitWidth + 14 * 2
                 implicitHeight: Math.max(statusRowLayout.implicitHeight, 38)
                 radius: Appearance.rounding.normal - root.padding
                 color: messageListView.atYBeginning ? Appearance.colors.colLayer2 : Appearance.colors.colLayer2Base
@@ -334,18 +383,31 @@ Inline w/ backslash and round brackets \\(e^{i\\pi} + 1 = 0\\)
                 RowLayout {
                     id: statusRowLayout
                     anchors.centerIn: parent
-                    spacing: 10
+                    spacing: 12
 
                     StatusItem {
-                        icon: Ai.currentModelHasApiKey ? "key" : "key_off"
-                        statusText: ""
-                        description: Ai.currentModelHasApiKey ? Translation.tr("API key is set\nChange with /key YOUR_API_KEY") : Translation.tr("No API key\nSet it with /key YOUR_API_KEY")
+                        clickable: true
+                        maxTextWidth: 190
+                        icon: Ai.modelList.length > 0 ? "neurology" : "cloud_off"
+                        statusText: Ai.modelList.length > 0 ? Ai.getModel().name : Translation.tr("Choose model")
+                        description: Ai.modelList.length > 0
+                            ? Translation.tr("Local models only (Ollama / vLLM)\nClick to choose the model")
+                            : Translation.tr("No local model found\nInstall Ollama, pull a model, then rescan")
+                        onActivated: {
+                            root.closePopups();
+                            modelPicker.show();
+                        }
                     }
                     StatusSeparator {}
                     StatusItem {
+                        clickable: true
                         icon: "device_thermostat"
                         statusText: Ai.temperature.toFixed(1)
-                        description: Translation.tr("Temperature\nChange with /temp VALUE")
+                        description: Translation.tr("Temperature (randomness)\nClick to change it")
+                        onActivated: {
+                            root.closePopups();
+                            tempPicker.show();
+                        }
                     }
                     StatusSeparator {
                         visible: Ai.tokenCount.total > 0
@@ -410,13 +472,85 @@ Inline w/ backslash and round brackets \\(e^{i\\pi} + 1 = 0\\)
                 shown: Ai.messageIDs.length === 0
                 icon: "neurology"
                 title: Translation.tr("Large language models")
-                description: Translation.tr("Type /key to get started with online models\nCtrl+O to expand sidebar\nCtrl+P to pin sidebar\nCtrl+D to detach sidebar")
+                description: Translation.tr("Local models only (Ollama / vLLM)\nClick the model name above to choose\n/refresh to rescan\n\nCtrl+O to expand sidebar\nCtrl+P to pin sidebar\nCtrl+D to detach sidebar")
+                descriptionHorizontalAlignment: Text.AlignHCenter
                 shape: MaterialShape.Shape.PixelCircle
             }
 
             ScrollToBottomButton {
                 z: 3
                 target: messageListView
+            }
+        }
+
+        RowLayout { // Action buttons (same as the /commands)
+            id: actionToolbar
+            Layout.fillWidth: true
+            Layout.minimumWidth: 0 // never push the chat wider than the sidebar: shrink the labels instead
+            spacing: 4
+
+            // Narrow sidebar: first "Clear" keeps only its icon, then every button does
+            readonly property real fullWidth: attachBtn.fullWidth + promptBtn.fullWidth + saveBtn.fullWidth + loadBtn.fullWidth + clearBtn.fullWidth + 5 * spacing
+            readonly property bool clearCompact: width < fullWidth
+            readonly property bool allCompact: width < fullWidth - clearBtn.fullWidth + clearBtn.compactWidth
+
+            AiToolbarButton {
+                id: attachBtn
+                showLabel: !actionToolbar.allCompact
+                symbol: "attach_file"
+                label: Translation.tr("Attach")
+                tooltipText: Translation.tr("Attach an image / file")
+                toggled: Ai.pendingFilePath.length > 0
+                onClicked: {
+                    root.closePopups();
+                    root.pickFileToAttach();
+                }
+            }
+            AiToolbarButton {
+                id: promptBtn
+                showLabel: !actionToolbar.allCompact
+                symbol: "description"
+                label: Translation.tr("Prompt")
+                tooltipText: Translation.tr("Choose the system prompt")
+                onClicked: {
+                    root.closePopups();
+                    promptPicker.show();
+                }
+            }
+            AiToolbarButton {
+                id: saveBtn
+                showLabel: !actionToolbar.allCompact
+                symbol: "save"
+                label: Translation.tr("Save")
+                tooltipText: Translation.tr("Save this chat")
+                onClicked: {
+                    root.closePopups();
+                    savePicker.inputText = "";
+                    savePicker.show();
+                }
+            }
+            AiToolbarButton {
+                id: loadBtn
+                showLabel: !actionToolbar.allCompact
+                symbol: "folder_open"
+                label: Translation.tr("Load")
+                tooltipText: Translation.tr("Load a saved chat")
+                onClicked: {
+                    root.closePopups();
+                    loadPicker.show();
+                }
+            }
+            Item {
+                Layout.fillWidth: true
+            }
+            AiToolbarButton {
+                id: clearBtn
+                showLabel: !actionToolbar.clearCompact
+                symbol: "delete_sweep"
+                label: Translation.tr("Clear")
+                tooltipText: Translation.tr("Clear chat history")
+                enabled: Ai.messageIDs.length > 0
+                onClicked: Ai.clearMessages()
             }
         }
 
@@ -753,24 +887,86 @@ Inline w/ backslash and round brackets \\(e^{i\\pi} + 1 = 0\\)
                         sendDirectly: false,
                         dontAddSpace: true
                     },
-                    {
-                        name: "clear",
-                        sendDirectly: true
-                    },
                 ]
 
-                ApiInputBoxIndicator {
-                    // Model indicator
-                    icon: "api"
-                    text: Ai.getModel().name
-                    tooltipText: Translation.tr("Current model: %1\nSet it with %2model MODEL").arg(Ai.getModel().name).arg(root.commandPrefix)
+                component InputChip: RippleButton {
+                    id: chip
+                    property string symbol
+                    property string label
+                    property string tooltipText
+                    property bool showChevron: false
+                    property color symbolColor: chip.toggled ? Appearance.colors.colOnSecondaryContainer : Appearance.m3colors.m3onSurface
+                    implicitHeight: 28
+                    // No vertical padding: the icon is taller than the padded area, which pushed
+                    // the content a few pixels below the center of the chip
+                    topPadding: 0
+                    bottomPadding: 0
+                    implicitWidth: Math.min(chipRow.implicitWidth + 16, 210)
+                    buttonRadius: Appearance.rounding.small
+                    colBackground: "transparent"
+                    colBackgroundHover: Appearance.colors.colLayer2Hover
+                    colBackgroundToggled: Appearance.colors.colSecondaryContainer
+                    colBackgroundToggledHover: Appearance.colors.colSecondaryContainerHover
+                    contentItem: RowLayout {
+                        id: chipRow
+                        spacing: 4
+                        MaterialSymbol {
+                            Layout.alignment: Qt.AlignVCenter
+                            text: chip.symbol
+                            iconSize: Appearance.font.pixelSize.larger
+                            color: chip.symbolColor
+                        }
+                        StyledText {
+                            Layout.alignment: Qt.AlignVCenter
+                            Layout.bottomMargin: 2 // font metrics: caps sit ~1px low without it
+                            Layout.fillWidth: true
+                            text: chip.label
+                            elide: Text.ElideRight
+                            font.pixelSize: Appearance.font.pixelSize.smaller
+                            color: chip.toggled ? Appearance.colors.colOnSecondaryContainer : Appearance.m3colors.m3onSurface
+                        }
+                        MaterialSymbol {
+                            visible: chip.showChevron
+                            Layout.alignment: Qt.AlignVCenter
+                            text: "expand_more"
+                            iconSize: Appearance.font.pixelSize.larger
+                            color: Appearance.colors.colSubtext
+                        }
+                    }
+                    StyledToolTip {
+                        text: chip.tooltipText
+                    }
                 }
 
-                ApiInputBoxIndicator {
-                    // Tool indicator
-                    icon: "service_toolbox"
-                    text: Ai.currentTool.charAt(0).toUpperCase() + Ai.currentTool.slice(1)
-                    tooltipText: Translation.tr("Current tool: %1\nSet it with %2tool TOOL").arg(Ai.currentTool).arg(root.commandPrefix)
+                InputChip { // Model: opens the picker
+                    symbol: "api"
+                    label: Ai.getModel().name
+                    showChevron: true
+                    tooltipText: Translation.tr("Current model: %1\nClick to choose another").arg(Ai.getModel().name)
+                    onClicked: {
+                        root.closePopups();
+                        modelPicker.show();
+                    }
+                }
+
+                InputChip { // Functions: opens the menu (right click = quick on/off)
+                    readonly property bool isOn: Ai.currentTool === "functions"
+                    readonly property bool unsupported: isOn && !Ai.currentModelSupportsTools
+                    symbol: unsupported ? "warning" : "service_toolbox"
+                    symbolColor: unsupported ? Appearance.colors.colError : (toggled ? Appearance.colors.colOnSecondaryContainer : Appearance.m3colors.m3onSurface)
+                    label: !isOn ? Translation.tr("Functions off")
+                        : unsupported ? Translation.tr("Functions")
+                        : Ai.functionsEnabled < Ai.functionsTotal ? `${Translation.tr("Functions")} ${Ai.functionsEnabled}/${Ai.functionsTotal}`
+                        : Translation.tr("Functions")
+                    toggled: isOn && !unsupported
+                    tooltipText: !isOn ? Translation.tr("Functions are off: plain chat\nClick to choose, right-click to turn on")
+                        : unsupported ? Translation.tr("%1 does not support functions, so none are sent\nClick to see why").arg(Ai.getModel().name)
+                        : Translation.tr("%1 of %2 functions allowed\nClick to choose, right-click to turn off").arg(Ai.functionsEnabled).arg(Ai.functionsTotal)
+                    altAction: () => Ai.setTool(isOn ? "none" : "functions")
+                    onClicked: {
+                        root.closePopups();
+                        toolsPicker.show();
+                    }
                 }
 
                 Item {
@@ -804,5 +1000,132 @@ Inline w/ backslash and round brackets \\(e^{i\\pi} + 1 = 0\\)
                 }
             }
         }
+    }
+
+    // ---- Popups (cards over the chat) ----
+    AiModelPicker {
+        id: modelPicker
+        anchors.fill: parent
+        onClosed: root.inputField.forceActiveFocus()
+        onManageRequested: {
+            modelPicker.close();
+            ollamaPanel.show();
+        }
+        onCatalogRequested: {
+            modelPicker.close();
+            catalogPage.show();
+        }
+    }
+
+    AiCatalog {
+        id: catalogPage
+        anchors.fill: parent
+        onClosed: root.inputField.forceActiveFocus()
+        onManageRequested: ollamaPanel.show()
+    }
+
+    AiOllamaPanel {
+        id: ollamaPanel
+        anchors.fill: parent
+        onClosed: root.inputField.forceActiveFocus()
+    }
+
+    AiToolsPicker {
+        id: toolsPicker
+        anchors.fill: parent
+        anchorBottom: true
+        bottomReserve: root.height - root.padding - messagesArea.height + 4
+        onClosed: root.inputField.forceActiveFocus()
+    }
+
+    AiTempPicker {
+        id: tempPicker
+        anchors.fill: parent
+        onClosed: root.inputField.forceActiveFocus()
+    }
+
+    AiListPicker {
+        id: promptPicker
+        anchors.fill: parent
+        anchorBottom: true
+        bottomReserve: root.height - root.padding - messagesArea.height + 4
+        title: Translation.tr("System prompt")
+        icon: "description"
+        emptyText: Translation.tr("No prompt files found")
+        items: Ai.promptFiles.map(path => ({
+            id: path,
+            title: root.chatNameFromPath(path),
+            subtitle: path.startsWith(Directories.defaultAiPrompts) ? Translation.tr("Built in") : Translation.tr("Yours")
+        }))
+        headerActions: [
+            RippleButton {
+                implicitWidth: 30
+                implicitHeight: 30
+                buttonRadius: Appearance.rounding.full
+                colBackground: "transparent"
+                onClicked: {
+                    promptPicker.close();
+                    Ai.printPrompt();
+                }
+                contentItem: MaterialSymbol {
+                    anchors.centerIn: parent
+                    horizontalAlignment: Text.AlignHCenter
+                    text: "visibility"
+                    iconSize: Appearance.font.pixelSize.larger
+                    color: Appearance.colors.colOnLayer3
+                }
+                StyledToolTip { text: Translation.tr("Show the current system prompt") }
+            }
+        ]
+        onPicked: id => {
+            Ai.loadPrompt(id);
+            promptPicker.close();
+        }
+        onClosed: root.inputField.forceActiveFocus()
+    }
+
+    AiListPicker {
+        id: savePicker
+        anchors.fill: parent
+        anchorBottom: true
+        bottomReserve: root.height - root.padding - messagesArea.height + 4
+        title: Translation.tr("Save chat")
+        icon: "save"
+        inputPlaceholder: Translation.tr("Chat name")
+        inputActionText: Translation.tr("Save")
+        inputActionIcon: "save"
+        emptyText: Translation.tr("No saved chats yet")
+        items: Ai.savedChats.map(path => ({
+            id: root.chatNameFromPath(path),
+            title: root.chatNameFromPath(path),
+            subtitle: Translation.tr("Click to overwrite this chat")
+        }))
+        onPicked: id => savePicker.inputText = id
+        onSubmitted: text => {
+            Ai.saveChat(text);
+            Ai.addMessage(Translation.tr("Chat saved as %1").arg(text), Ai.interfaceRole);
+            savePicker.close();
+        }
+        onClosed: root.inputField.forceActiveFocus()
+    }
+
+    AiListPicker {
+        id: loadPicker
+        anchors.fill: parent
+        anchorBottom: true
+        bottomReserve: root.height - root.padding - messagesArea.height + 4
+        title: Translation.tr("Load chat")
+        icon: "folder_open"
+        emptyText: Translation.tr("No saved chats yet")
+        items: Ai.savedChats.map(path => ({
+            id: root.chatNameFromPath(path),
+            title: root.chatNameFromPath(path) === "lastSession" ? Translation.tr("Last session") : root.chatNameFromPath(path),
+            subtitle: ""
+        }))
+        onPicked: id => {
+            Ai.loadChat(id);
+            loadPicker.close();
+        }
+        onClosed: root.inputField.forceActiveFocus()
     }
 }

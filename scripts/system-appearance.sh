@@ -56,8 +56,8 @@ case "$action" in
         theme_dirs | while read -r dir; do
             name=$(basename "$dir")
             case "$name" in default|hicolor) continue ;; esac
-            [ -f "$dir/index.theme" ] && grep -q "^Directories=" "$dir/index.theme" && echo "$name"
-        done | grep -Ev -- '-Dynamic-' | sort -u
+            [ -f "$dir/index.theme" ] && grep -q "^Directories=" "$dir/index.theme" && ! grep -qi "^Hidden=true" "$dir/index.theme" && echo "$name"
+        done | sort -u
         ;;
     --list-cursors)
         theme_dirs | while read -r dir; do

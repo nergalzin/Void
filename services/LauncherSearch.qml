@@ -117,7 +117,7 @@ Singleton {
         {
             action: "wipeclipboard",
             execute: () => {
-                Quickshell.execDetached(["bash", "-c", "rm -f ~/.cache/cliphist/db"]);
+                Cliphist.wipe();
             }
         },
         {
@@ -294,37 +294,6 @@ Singleton {
                     }
                 });
             }).filter(Boolean);
-        } else if (root.query.startsWith(Config.options.search.prefix.keybinds ?? "<")) {
-            // Keybinds
-            const searchString = StringUtils.cleanPrefix(root.query, Config.options.search.prefix.keybinds ?? "<");
-            const flatBinds = (function flatten(node) {
-                let result = [...(node.keybinds ?? [])];
-                for (const child of (node.children ?? [])) {
-                    result = result.concat(flatten(child));
-                }
-                return result;
-            })(HyprlandKeybinds.keybinds);
-
-            return flatBinds.filter(bind => {
-                if (!bind.comment) return false;
-                if (searchString.length === 0) return true;
-                return bind.comment.toLowerCase().includes(searchString.toLowerCase())
-                    || bind.key.toLowerCase().includes(searchString.toLowerCase());
-            }).map(bind => {
-                const modsStr = bind.mods.join(" + ");
-                const keyStr  = modsStr.length > 0 ? `${modsStr} + ${bind.key}` : bind.key;
-                return resultComp.createObject(null, {
-                    name: bind.comment,
-                    iconName: "keyboard",
-                    iconType: LauncherSearchResult.IconType.Material,
-                    verb: keyStr,
-                    type: Translation.tr("Keybind"),
-                    comment: keyStr,
-                    execute: () => {
-                        Quickshell.clipboardText = keyStr;
-                    }
-                });
-            }).filter(Boolean);
         } else if (root.query.startsWith(Config.options.search.prefix.symbols)) {
             // Material Symbols
             const searchString = StringUtils.cleanPrefix(root.query, Config.options.search.prefix.symbols);
@@ -397,7 +366,7 @@ Singleton {
             });
         });
         ////////////////// Settings search //////////////////
-        const settingsEntries = Config.options.settings.style === "dashboard" ? [] : SettingsSearchIndex.search(root.query, 8);
+        const settingsEntries = SettingsSearchIndex.search(root.query, 8);
         const settingsResults = settingsEntries.map(entry => {
             const breadcrumb = entry.kind === "page" ? Translation.tr("Settings") : [entry.pageName, entry.kind === "option" ? entry.section : "", entry.kind === "option" ? entry.subsection : ""].filter(part => part).join(" › ");
             return resultComp.createObject(null, {
@@ -445,6 +414,20 @@ Singleton {
                 Qt.openUrlExternally(url);
             }
         });
+        const duckPrefix = Config.options.search.prefix.duckAi ?? "duck ";
+        const startsWithDuckPrefix = duckPrefix !== "" && root.query.toLowerCase().startsWith(duckPrefix.toLowerCase());
+        const duckQuestion = startsWithDuckPrefix ? root.query.slice(duckPrefix.length).trim() : root.query.trim();
+        const duckIcon = (Webapps.items.find(item => item.id === Webapps.duckAiId) ?? {}).icon ?? "";
+        const duckResultObject = resultComp.createObject(null, {
+            name: duckQuestion,
+            verb: Translation.tr("Ask"),
+            type: "Duck.ai",
+            iconName: duckIcon !== "" ? duckIcon : "forum",
+            iconType: duckIcon !== "" ? LauncherSearchResult.IconType.System : LauncherSearchResult.IconType.Material,
+            execute: () => {
+                Webapps.askDuckAi(duckQuestion);
+            }
+        });
         const launcherActionObjects = root.allActions.map(action => {
             const actionString = `${Config.options.search.prefix.action}${action.action}`;
             if (actionString.startsWith(root.query) || root.query.startsWith(actionString)) {
@@ -474,6 +457,8 @@ Singleton {
             result.push(commandResultObject);
         } else if (startsWithWebSearchPrefix) {
             result.push(webSearchResultObject);
+        } else if (startsWithDuckPrefix && duckQuestion !== "") {
+            result.push(duckResultObject);
         }
 
         //////////////// Apps //////////////////
@@ -491,6 +476,8 @@ Singleton {
                 result.push(mathResultObject);
             if (!startsWithWebSearchPrefix)
                 result.push(webSearchResultObject);
+            if (!startsWithDuckPrefix && duckQuestion !== "")
+                result.push(duckResultObject);
         }
         
         return result;
