@@ -171,6 +171,57 @@ Singleton {
     property var allActions: searchActions.concat(userActionScripts)
 
     property string mathResult: ""
+
+    // File search ("/path" or "/name"): helper script lists folders and runs fd in $HOME
+    property string fileSearchScriptPath: FileUtils.trimFileProtocol(Quickshell.shellPath("scripts/launcher/file_search.py"))
+    property var fileSearchResults: []
+    property string lastFileQuery: ""
+    // A function, not a binding: onQueryChanged runs before bindings that read `query` are updated
+    function queryIsFileSearch(q) {
+        return Config.options.search.omni.enableFileSearch && (q.startsWith("/") || q.startsWith("~/"));
+    }
+    readonly property bool isFileQuery: queryIsFileSearch(root.query)
+
+    onQueryChanged: {
+        if (root.queryIsFileSearch(root.query)) {
+            fileSearchTimer.restart();
+        } else {
+            root.fileSearchResults = [];
+            root.lastFileQuery = "";
+        }
+    }
+
+    Timer {
+        id: fileSearchTimer
+        interval: 40
+        onTriggered: {
+            if (root.queryIsFileSearch(root.query))
+                fileSearchProc.search(root.query);
+        }
+    }
+
+    Process {
+        id: fileSearchProc
+        property string targetQuery: ""
+        function search(q) {
+            fileSearchProc.running = false;
+            fileSearchProc.targetQuery = q;
+            fileSearchProc.command = ["python3", root.fileSearchScriptPath, "search", q];
+            fileSearchProc.running = true;
+        }
+        stdout: SplitParser {
+            onRead: data => {
+                if (fileSearchProc.targetQuery !== root.query)
+                    return; // stale answer from a previous keystroke
+                try {
+                    root.fileSearchResults = JSON.parse(data);
+                    root.lastFileQuery = fileSearchProc.targetQuery;
+                } catch (e) {
+                    root.fileSearchResults = [];
+                }
+            }
+        }
+    }
     property bool clipboardWorkSafetyActive: {
         const enabled = Config.options.workSafety.enable.clipboard;
         const sensitiveNetwork = (StringUtils.stringListContainsSubstring(Network.networkName.toLowerCase(), Config.options.workSafety.triggerCondition.networkNameKeywords));
@@ -445,8 +496,65 @@ Singleton {
             return null;
         }).filter(Boolean);
 
+        //////// Files and folders ("/path", "/name", "~/path") /////////
+        if (root.isFileQuery) {
+            let fileItems = [];
+            if (root.lastFileQuery === root.query) {
+                fileItems = root.fileSearchResults.map(item => resultComp.createObject(null, {
+                    name: item.path,
+                    comment: item.is_dir ? Translation.tr("Open folder") : Translation.tr("Open file"),
+                    verb: Translation.tr("Open"),
+                    type: item.is_dir ? Translation.tr("Folder") : Translation.tr("File"),
+                    iconName: item.is_dir ? "folder" : "description",
+                    iconType: LauncherSearchResult.IconType.Material,
+                    execute: () => {
+                        Quickshell.execDetached(["python3", root.fileSearchScriptPath, "open", item.path]);
+                    },
+                    actions: item.is_dir ? [] : [resultComp.createObject(null, {
+                        name: Translation.tr("Show in folder"),
+                        iconName: "folder_open",
+                        iconType: LauncherSearchResult.IconType.Material,
+                        execute: () => {
+                            Quickshell.execDetached(["python3", root.fileSearchScriptPath, "reveal", item.path]);
+                        }
+                    })]
+                }));
+            }
+            // Launcher actions keep priority once the query is (or extends) an action name, e.g. "/dark"
+            const actionTyped = root.allActions.some(a => {
+                const actString = `${Config.options.search.prefix.action}${a.action}`;
+                return root.query === actString || root.query.startsWith(actString + " ");
+            });
+            return actionTyped ? launcherActionObjects.concat(fileItems) : fileItems.concat(launcherActionObjects);
+        }
+
+        //////// Direct domain / URL -> open in the default browser /////////
+        let domainResultObject = null;
+        if (Config.options.search.omni.enableDirectUrl) {
+            const trimmedQuery = root.query.trim();
+            const hasScheme = /^https?:\/\//i.test(trimmedQuery);
+            const domainMatch = /^(?:https?:\/\/)?(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+([a-z]{2,24})(?::\d+)?(?:[\/?#]\S*)?$/i.exec(trimmedQuery);
+            const fileExtLike = ["txt", "md", "py", "js", "sh", "json", "pdf", "png", "jpg", "jpeg", "qml", "lua", "conf", "ini", "zip", "log", "csv", "yml", "yaml", "html", "css", "cpp", "java", "mp3", "mp4"];
+            if (domainMatch !== null && (hasScheme || !fileExtLike.includes(domainMatch[1].toLowerCase()))) {
+                const targetUrl = hasScheme ? trimmedQuery : "https://" + trimmedQuery;
+                domainResultObject = resultComp.createObject(null, {
+                    name: trimmedQuery,
+                    comment: Translation.tr("Open directly in browser"),
+                    verb: Translation.tr("Open"),
+                    type: Translation.tr("Website"),
+                    iconName: "language",
+                    iconType: LauncherSearchResult.IconType.Material,
+                    execute: () => {
+                        Qt.openUrlExternally(targetUrl);
+                    }
+                });
+            }
+        }
+
         //////// Prioritized by prefix /////////
         let result = [];
+        if (domainResultObject)
+            result.push(domainResultObject);
         const startsWithNumber = /^\d/.test(root.query);
         const startsWithMathPrefix = root.query.startsWith(Config.options.search.prefix.math);
         const startsWithShellCommandPrefix = root.query.startsWith(Config.options.search.prefix.shellCommand);

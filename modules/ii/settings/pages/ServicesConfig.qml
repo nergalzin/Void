@@ -122,6 +122,25 @@ ContentPage {
                     }
                 }
                 ConfigSwitch {
+                    buttonIcon: "folder_open"
+                    text: Translation.tr("File search: type / followed by a path or name")
+                    checked: Config.options.search.omni.enableFileSearch
+                    onCheckedChanged: {
+                        Config.options.search.omni.enableFileSearch = checked;
+                    }
+                    StyledToolTip {
+                        text: Translation.tr("Lists folders and files on this PC only. With this on, / also lists files before the launcher actions")
+                    }
+                }
+                ConfigSwitch {
+                    buttonIcon: "language"
+                    text: Translation.tr("Open typed websites directly (example.com)")
+                    checked: Config.options.search.omni.enableDirectUrl
+                    onCheckedChanged: {
+                        Config.options.search.omni.enableDirectUrl = checked;
+                    }
+                }
+                ConfigSwitch {
                     buttonIcon: "content_paste"
                     text: Translation.tr("Save clipboard history")
                     checked: Config.options.search.saveClipboardHistory

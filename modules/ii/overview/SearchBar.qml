@@ -49,7 +49,7 @@ RowLayout {
             default: return MaterialShape.Shape.Cookie7Sided;
         }
         text: switch (root.searchPrefixType) {
-            case SearchBar.SearchPrefixType.Action: return "settings_suggest";
+            case SearchBar.SearchPrefixType.Action: return Config.options.search.omni.enableFileSearch ? "folder_open" : "settings_suggest";
             case SearchBar.SearchPrefixType.App: return "apps";
             case SearchBar.SearchPrefixType.Clipboard: return "content_paste_search";
             case SearchBar.SearchPrefixType.Emojis: return "add_reaction";

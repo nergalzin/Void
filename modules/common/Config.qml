@@ -887,6 +887,10 @@ Singleton {
                 property string engineBaseUrl: "https://www.google.com/search?q="
                 property list<string> excludedSites: ["quora.com", "facebook.com"]
                 property list<var> clipboardPins: []
+                property JsonObject omni: JsonObject {
+                    property bool enableFileSearch: true // launcher: "/path" or "/name" lists files and folders
+                    property bool enableDirectUrl: true // launcher: typing "site.com" offers to open it directly
+                }
                 property bool clipboardPreviewPopup: false
                 property bool saveClipboardHistory: true // false = nothing you copy is stored (Services > Search)
                 property bool sloppy: false // Uses levenshtein distance based scoring instead of fuzzy sort. Very weird.

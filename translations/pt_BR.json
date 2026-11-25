@@ -1138,5 +1138,15 @@
   "Highlight widgets in Hug styles": "Destacar widgets nos estilos Hug",
   "Hug and Split Hug (horizontal bar): widgets sit on highlighted Material pills\nand the power button becomes a round button, like in M3 and M3 Hug.": "Hug e Split Hug (barra horizontal): os widgets ficam em pílulas Material destacadas\ne o botão de desligar vira um botão redondo, como no M3 e M3 Hug.",
   "Workspaces on a capsule": "Workspaces em uma cápsula",
-  "GNOME, Dots and Ticks styles: the indicator sits on a soft rounded capsule\nand the GNOME dots are a little bigger.": "Estilos GNOME, Pontos e Traços: o indicador fica sobre uma cápsula arredondada suave\ne as bolinhas do GNOME ficam um pouco maiores."
+  "GNOME, Dots and Ticks styles: the indicator sits on a soft rounded capsule\nand the GNOME dots are a little bigger.": "Estilos GNOME, Pontos e Traços: o indicador fica sobre uma cápsula arredondada suave\ne as bolinhas do GNOME ficam um pouco maiores.",
+  "File": "Arquivo",
+  "Folder": "Pasta",
+  "Website": "Site",
+  "Open file": "Abrir arquivo",
+  "Open folder": "Abrir pasta",
+  "Show in folder": "Mostrar na pasta",
+  "Open directly in browser": "Abrir direto no navegador",
+  "File search: type / followed by a path or name": "Busca de arquivos: digite / seguido de um caminho ou nome",
+  "Lists folders and files on this PC only. With this on, / also lists files before the launcher actions": "Lista só pastas e arquivos deste PC. Com isto ligado, o / também mostra arquivos antes das ações do launcher",
+  "Open typed websites directly (example.com)": "Abrir sites digitados direto (exemplo.com)"
 }
